@@ -1,0 +1,25 @@
+{
+  "name": "breakfast-pos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Breakfast POS monorepo",
+  "workspaces": [
+    "backend",
+    "frontend",
+    "admin"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend,admin -c blue,green,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\" \"npm run dev -w admin\"",
+    "build": "npm run build -w backend && npm run build -w frontend && npm run build -w admin",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "db:generate": "npm run prisma:generate -w backend",
+    "db:migrate": "docker compose up -d postgres && docker compose build backend && docker compose run --rm backend sh -c \"npx prisma migrate deploy\"",
+    "db:seed": "docker compose up -d postgres && docker compose build backend && docker compose run --rm backend sh -c \"npx prisma generate && node prisma/seed.js\"",
+    "setup": "npm install && npm run build && npm run db:migrate && npm run db:seed"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

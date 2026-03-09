@@ -1,0 +1,79 @@
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: breakfast_pos
+      POSTGRES_USER: pos_user
+      POSTGRES_PASSWORD: pos_password
+      POSTGRES_HOST_AUTH_METHOD: trust
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pos_user -d breakfast_pos"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      BACKEND_PORT: 3001
+      RUN_MIGRATIONS: "true"
+      PRISMA_DB_PUSH_FALLBACK: "true"
+      DATABASE_URL: postgresql://pos_user:pos_password@postgres:5432/breakfast_pos
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      LINE_NOTIFY_TOKEN: ${LINE_NOTIFY_TOKEN}
+      PRINTER_IP: ${PRINTER_IP}
+      PRINTER_PORT: ${PRINTER_PORT}
+      FOODPANDA_WEBHOOK_SECRET: ${FOODPANDA_WEBHOOK_SECRET}
+      UBEREATS_WEBHOOK_SECRET: ${UBEREATS_WEBHOOK_SECRET}
+      DAILY_SALES_TARGET: ${DAILY_SALES_TARGET}
+      FRONTEND_URL: http://localhost:3000
+      ADMIN_URL: http://localhost:3002
+      CORS_ORIGINS: http://localhost:3000,http://localhost:3002
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3001/api/health').then((res) => { if (!res.ok) process.exit(1); }).catch(() => process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:3001/api
+        VITE_SOCKET_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PORT: 3000
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        VITE_API_BASE_URL: http://localhost:3001/api
+    ports:
+      - "3002:3002"
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      PORT: 3002
+
+volumes:
+  postgres_data:

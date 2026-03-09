@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 全域樣式 */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#root {
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* 滾動條樣式 */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0f3460;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3b82f6;
+}
+
+/* POS 按鈕效果 */
+@layer components {
+  .pos-btn {
+    @apply px-4 py-3 rounded-xl font-medium transition-all duration-150
+           active:scale-95 active:brightness-90 select-none;
+  }
+
+  .pos-btn-primary {
+    @apply pos-btn bg-primary-600 hover:bg-primary-700 text-white;
+  }
+
+  .pos-btn-success {
+    @apply pos-btn bg-pos-success hover:brightness-110 text-white;
+  }
+
+  .pos-btn-danger {
+    @apply pos-btn bg-pos-highlight hover:brightness-110 text-white;
+  }
+
+  .pos-btn-warning {
+    @apply pos-btn bg-pos-warning hover:brightness-110 text-gray-900;
+  }
+
+  .pos-card {
+    @apply bg-pos-card rounded-2xl border border-pos-accent/30 shadow-lg;
+  }
+
+  .pos-input {
+    @apply w-full px-4 py-3 bg-pos-bg border border-pos-accent rounded-xl
+           text-pos-text placeholder-pos-muted focus:outline-none focus:border-primary-500
+           focus:ring-1 focus:ring-primary-500 transition-colors;
+  }
+}
+
+/* 數字鍵盤動畫 */
+.numpad-key {
+  @apply flex items-center justify-center text-2xl font-bold rounded-xl
+         bg-pos-accent/50 text-pos-text active:bg-primary-600 active:scale-95
+         transition-all duration-100 cursor-pointer select-none;
+  height: 64px;
+}
+
+/* 叫號動畫 */
+@keyframes callPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.05); opacity: 0.8; }
+}
+
+.call-pulse {
+  animation: callPulse 2s ease-in-out infinite;
+}
+
+/* iPad 適配 */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .pos-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1025px) {
+  .pos-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}

@@ -1,0 +1,371 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== 使用者與權限 ====================
+
+// 員工/使用者
+model User {
+  id          Int      @id @default(autoincrement())
+  name        String   // 姓名
+  pin         String   // PIN 碼（4-6位數字，bcrypt 雜湊）
+  role        String   @default("cashier") // admin, manager, cashier, kitchen, server
+  avatar      String?  // 頭像 URL
+  isActive    Boolean  @default(true) // 是否啟用
+  permissions String   @default("[]") // JSON 格式的額外權限
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 關聯
+  orders      Order[]  // 建立的訂單
+  shifts      Shift[]  // 班次紀錄
+  activities  ActivityLog[] // 操作紀錄
+
+  @@map("users")
+}
+
+// 班次紀錄
+model Shift {
+  id          Int       @id @default(autoincrement())
+  userId      Int       // 員工 ID
+  clockIn     DateTime  @default(now()) // 上班打卡
+  clockOut    DateTime? // 下班打卡
+  cashStart   Float     @default(0) // 交班時現金
+  cashEnd     Float?    // 收班時現金
+  note        String?   // 備註
+
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@map("shifts")
+}
+
+// 操作紀錄
+model ActivityLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int      // 操作員工
+  action      String   // 動作類型：login, logout, void_order, discount, refund, etc.
+  target      String?  // 操作對象（如訂單編號）
+  detail      String?  // 詳細內容（JSON）
+  ipAddress   String?  // IP 位址
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+// ==================== 菜單系統 ====================
+
+// 菜單分類
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   // 分類名稱
+  description String?  // 描述
+  icon        String?  // 圖示（emoji 或 URL）
+  color       String   @default("#4A90D9") // 顯示顏色
+  sortOrder   Int      @default(0) // 排序
+  isActive    Boolean  @default(true) // 是否啟用
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 關聯
+  items       MenuItem[]
+
+  @@map("categories")
+}
+
+// 菜單項目
+model MenuItem {
+  id              Int      @id @default(autoincrement())
+  categoryId      Int      // 所屬分類
+  name            String   // 品名
+  description     String?  // 描述
+  image           String?  // 圖片 URL
+  basePrice       Float    // 基本價格
+  cost            Float    @default(0) // 成本價
+  sku             String?  // 商品編號
+  barcode         String?  // 條碼
+  isActive        Boolean  @default(true) // 是否上架
+  isFeatured      Boolean  @default(false) // 是否推薦
+  preparationTime Int      @default(5) // 預估製作時間（分鐘）
+  sortOrder       Int      @default(0) // 排序
+  tags            String   @default("[]") // JSON 標籤陣列
+  calories        Int?     // 熱量（大卡）
+  allergens       String   @default("[]") // 過敏原 JSON
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 關聯
+  category        Category @relation(fields: [categoryId], references: [id])
+  timePrices      MenuItemTimePrice[] // 時段定價
+  options         MenuOption[] // 選項群組
+  orderItems      OrderItem[] // 訂單品項
+  comboItems      ComboItem[] // 套餐內容
+
+  @@map("menu_items")
+}
+
+// 菜單時段定價
+model MenuItemTimePrice {
+  id          Int      @id @default(autoincrement())
+  menuItemId  Int      // 所屬菜單項目
+  name        String   // 時段名稱（如：午餐、晚餐、宵夜）
+  price       Float    // 該時段價格
+  startTime   String   // 開始時間 "HH:mm"
+  endTime     String   // 結束時間 "HH:mm"
+  daysOfWeek  String   @default("[1,2,3,4,5,6,7]") // 適用星期幾 JSON
+  isActive    Boolean  @default(true)
+
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@map("menu_item_time_prices")
+}
+
+// 菜單選項群組（如：大小、冰量、甜度）
+model MenuOption {
+  id          Int      @id @default(autoincrement())
+  menuItemId  Int      // 所屬菜單項目
+  name        String   // 選項群組名稱
+  type        String   @default("single") // single=單選, multiple=多選
+  isRequired  Boolean  @default(false) // 是否必選
+  maxSelect   Int      @default(1) // 最多可選數
+  sortOrder   Int      @default(0)
+
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  choices     MenuOptionChoice[] // 選項
+
+  @@map("menu_options")
+}
+
+// 選項內容
+model MenuOptionChoice {
+  id          Int      @id @default(autoincrement())
+  optionId    Int      // 所屬選項群組
+  name        String   // 選項名稱
+  priceAdjust Float    @default(0) // 加價金額
+  isDefault   Boolean  @default(false) // 是否預設
+  sortOrder   Int      @default(0)
+
+  option      MenuOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@map("menu_option_choices")
+}
+
+// 套餐
+model Combo {
+  id          Int      @id @default(autoincrement())
+  name        String   // 套餐名稱
+  description String?  // 描述
+  price       Float    // 套餐價格
+  image       String?  // 圖片
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       ComboItem[] // 套餐內容
+
+  @@map("combos")
+}
+
+// 套餐內容
+model ComboItem {
+  id          Int      @id @default(autoincrement())
+  comboId     Int      // 所屬套餐
+  menuItemId  Int      // 菜單項目
+  quantity    Int      @default(1) // 數量
+
+  combo       Combo    @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@map("combo_items")
+}
+
+// ==================== 訂單系統 ====================
+
+// 訂單
+model Order {
+  id              Int      @id @default(autoincrement())
+  orderNumber     String   @unique // 訂單編號（如 A001）
+  type            String   @default("dine_in") // dine_in=內用, takeout=外帶, delivery=外送
+  status          String   @default("pending") // pending, preparing, ready, completed, cancelled
+  source          String   @default("pos") // pos, kiosk, qrcode, ubereats, foodpanda
+  tableNumber     String?  // 桌號
+  customerName    String?  // 顧客名稱
+  customerPhone   String?  // 顧客電話
+  customerCount   Int      @default(1) // 用餐人數
+  subtotal        Float    @default(0) // 小計
+  taxAmount       Float    @default(0) // 稅額
+  discountAmount  Float    @default(0) // 折扣金額
+  discountReason  String?  // 折扣原因
+  totalAmount     Float    @default(0) // 總金額
+  paidAmount      Float    @default(0) // 已付金額
+  changeAmount    Float    @default(0) // 找零
+  paymentMethod   String?  // cash, card, mobile, mixed
+  paymentStatus   String   @default("unpaid") // unpaid, paid, refunded, partial
+  note            String?  // 訂單備註
+  createdById     Int?     // 建立者
+  callNumber      String?  // 叫號號碼
+  calledAt        DateTime? // 叫號時間
+  completedAt     DateTime? // 完成時間
+  cancelledAt     DateTime? // 取消時間
+  cancelReason    String?  // 取消原因
+  externalOrderId String?  // 外部訂單 ID（外送平台）
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // 關聯
+  createdBy       User?    @relation(fields: [createdById], references: [id])
+  items           OrderItem[] // 訂單品項
+  payments        Payment[] // 付款紀錄
+
+  @@map("orders")
+}
+
+// 訂單品項
+model OrderItem {
+  id              Int      @id @default(autoincrement())
+  orderId         Int      // 所屬訂單
+  menuItemId      Int      // 菜單項目
+  name            String   // 品名（快照）
+  quantity        Int      @default(1) // 數量
+  unitPrice       Float    // 單價（快照）
+  totalPrice      Float    // 小計（含選項加價）
+  options         String   @default("[]") // 選擇的選項 JSON
+  note            String?  // 備註（如：不要蔥）
+  status          String   @default("pending") // pending, preparing, ready, served, cancelled
+  preparedAt      DateTime? // 製作完成時間
+  servedAt        DateTime? // 上菜時間
+  createdAt       DateTime @default(now())
+
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem        MenuItem @relation(fields: [menuItemId], references: [id])
+
+  @@map("order_items")
+}
+
+// 付款紀錄
+model Payment {
+  id          Int      @id @default(autoincrement())
+  orderId     Int      // 所屬訂單
+  method      String   // cash, card, line_pay, jko_pay, apple_pay
+  amount      Float    // 金額
+  reference   String?  // 交易參考號
+  status      String   @default("completed") // pending, completed, failed, refunded
+  createdAt   DateTime @default(now())
+
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+// ==================== 會員系統 ====================
+
+// 會員
+model Member {
+  id          Int      @id @default(autoincrement())
+  phone       String   @unique // 手機號碼
+  name        String?  // 姓名
+  email       String?  // Email
+  birthday    DateTime? // 生日
+  gender      String?  // male, female, other
+  points      Int      @default(0) // 累積點數
+  totalSpent  Float    @default(0) // 累積消費
+  visitCount  Int      @default(0) // 來店次數
+  level       String   @default("normal") // normal, silver, gold, vip
+  note        String?  // 備註
+  lineUserId  String?  // LINE User ID
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  pointLogs   PointLog[] // 點數紀錄
+
+  @@map("members")
+}
+
+// 點數紀錄
+model PointLog {
+  id          Int      @id @default(autoincrement())
+  memberId    Int      // 會員 ID
+  points      Int      // 點數變動（正數=獲得，負數=使用）
+  type        String   // earn=獲得, redeem=兌換, adjust=調整, expire=過期
+  description String?  // 說明
+  orderId     Int?     // 關聯訂單
+  createdAt   DateTime @default(now())
+
+  member      Member   @relation(fields: [memberId], references: [id])
+
+  @@map("point_logs")
+}
+
+// ==================== 系統設定 ====================
+
+// 店家設定
+model Setting {
+  id          Int      @id @default(autoincrement())
+  key         String   @unique // 設定鍵
+  value       String   // 設定值（JSON）
+  group       String   @default("general") // 群組：general, receipt, tax, notification
+  description String?  // 說明
+  updatedAt   DateTime @updatedAt
+
+  @@map("settings")
+}
+
+// 桌位
+model Table {
+  id          Int      @id @default(autoincrement())
+  number      String   @unique // 桌號
+  name        String?  // 桌位名稱
+  capacity    Int      @default(4) // 座位數
+  zone        String   @default("main") // 區域
+  status      String   @default("available") // available, occupied, reserved, cleaning
+  qrCode      String?  // QR Code URL
+  sortOrder   Int      @default(0)
+  isActive    Boolean  @default(true)
+
+  @@map("tables")
+}
+
+// 印表機設定
+model Printer {
+  id          Int      @id @default(autoincrement())
+  name        String   // 印表機名稱
+  type        String   @default("receipt") // receipt=收據, kitchen=廚房, label=標籤
+  ipAddress   String?  // IP 位址
+  port        Int      @default(9100) // 連接埠
+  paperWidth  Int      @default(80) // 紙寬（mm）
+  isActive    Boolean  @default(true)
+  categories  String   @default("[]") // 負責列印的分類 JSON
+
+  @@map("printers")
+}
+
+// 每日結帳紀錄
+model DailyReport {
+  id              Int      @id @default(autoincrement())
+  date            String   @unique // 日期 YYYY-MM-DD
+  totalOrders     Int      @default(0) // 總訂單數
+  totalRevenue    Float    @default(0) // 總營收
+  totalDiscount   Float    @default(0) // 總折扣
+  totalTax        Float    @default(0) // 總稅額
+  cashTotal       Float    @default(0) // 現金收入
+  cardTotal       Float    @default(0) // 刷卡收入
+  mobileTotal     Float    @default(0) // 行動支付收入
+  cancelledOrders Int      @default(0) // 取消訂單數
+  cancelledAmount Float    @default(0) // 取消金額
+  avgOrderAmount  Float    @default(0) // 平均客單價
+  peakHour        String?  // 尖峰時段
+  topItems        String   @default("[]") // 熱銷品項 JSON
+  closedById      Int?     // 結帳人員
+  note            String?  // 備註
+  createdAt       DateTime @default(now())
+
+  @@map("daily_reports")
+}
