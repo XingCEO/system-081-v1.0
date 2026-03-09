@@ -1,12 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
+function defaultForm() {
+  return { id: null, name: '', role: 'STAFF', password: '', pin: '' };
+}
+
 export default function StaffPage() {
   const queryClient = useQueryClient();
   const [selectedStaffId, setSelectedStaffId] = useState(null);
-  const [form, setForm] = useState({ name: '', role: 'STAFF', password: '', pin: '' });
+  const [form, setForm] = useState(defaultForm());
 
   const staffQuery = useQuery({
     queryKey: ['admin-staff'],
@@ -19,19 +23,29 @@ export default function StaffPage() {
     enabled: Boolean(selectedStaffId)
   });
 
-  const createStaffMutation = useMutation({
-    mutationFn: (payload) => api.post('/staff', payload),
+  useEffect(() => {
+    const selected = (staffQuery.data || []).find((entry) => entry.id === selectedStaffId);
+    if (selected) {
+      setForm({ id: selected.id, name: selected.name, role: selected.role, password: '', pin: '' });
+    }
+  }, [selectedStaffId, staffQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload) => (
+      payload.id ? api.put(`/staff/${payload.id}`, payload) : api.post('/staff', payload)
+    ),
     onSuccess: () => {
-      toast.success('已新增員工');
-      setForm({ name: '', role: 'STAFF', password: '', pin: '' });
+      toast.success('員工資料已儲存');
       queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+      setForm(defaultForm());
     }
   });
 
   const clockMutation = useMutation({
     mutationFn: ({ id, action }) => api.post(`/staff/${id}/${action}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin-staff-attendance'] });
+      toast.success('打卡完成');
+      queryClient.invalidateQueries({ queryKey: ['admin-staff-attendance', selectedStaffId] });
     }
   });
 
@@ -42,9 +56,12 @@ export default function StaffPage() {
     <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
       <section className="space-y-4">
         <article className="admin-panel p-5">
-          <h2 className="text-xl font-bold text-slate-900">新增員工</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-slate-900">{form.id ? '編輯員工' : '新增員工'}</h2>
+            <button type="button" className="admin-ghost" onClick={() => setForm(defaultForm())}>清空表單</button>
+          </div>
           <div className="mt-4 grid gap-3">
-            <input className="admin-field" placeholder="員工帳號" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+            <input className="admin-field" placeholder="員工名稱" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
             <select className="admin-field" value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>
               <option value="OWNER">OWNER</option>
               <option value="MANAGER">MANAGER</option>
@@ -52,7 +69,7 @@ export default function StaffPage() {
             </select>
             <input className="admin-field" type="password" placeholder="密碼" value={form.password} onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))} />
             <input className="admin-field" placeholder="PIN 碼" value={form.pin} onChange={(event) => setForm((current) => ({ ...current, pin: event.target.value }))} />
-            <button type="button" className="admin-button" onClick={() => createStaffMutation.mutate(form)}>建立員工</button>
+            <button type="button" className="admin-button" onClick={() => saveMutation.mutate(form)}>儲存員工</button>
           </div>
         </article>
 
@@ -87,7 +104,7 @@ export default function StaffPage() {
             </div>
           ))}
           {selectedStaffId && attendance.length === 0 && (
-            <div className="admin-soft p-4 text-sm text-slate-500">目前還沒有打卡資料。</div>
+            <div className="admin-soft p-4 text-sm text-slate-500">目前沒有打卡資料。</div>
           )}
         </div>
       </article>

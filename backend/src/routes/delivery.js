@@ -64,4 +64,32 @@ router.get('/orders', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyn
   });
 }));
 
+router.patch('/orders/:id/status', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
+  const status = String(req.body.status || '').toUpperCase();
+  const deliveryOrder = await prisma.deliveryOrder.update({
+    where: {
+      id: Number(req.params.id)
+    },
+    data: {
+      status
+    },
+    include: {
+      order: {
+        include: {
+          items: {
+            include: {
+              menuItem: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  res.json({
+    success: true,
+    data: deliveryOrder
+  });
+}));
+
 module.exports = router;

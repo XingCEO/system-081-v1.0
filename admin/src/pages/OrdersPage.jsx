@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import Dialog from '../components/Dialog';
 import api from '../lib/api';
+
+function formatCurrency(value) {
+  return `NT$${Number(value || 0).toFixed(0)}`;
+}
 
 export default function OrdersPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({ status: '', type: '' });
+  const [selectedOrder, setSelectedOrder] = useState(null);
   const [phoneOrder, setPhoneOrder] = useState({ menuItemId: '', quantity: 1, note: '', memberPhone: '' });
 
   const ordersQuery = useQuery({
@@ -26,9 +32,30 @@ export default function OrdersPage() {
   const phoneOrderMutation = useMutation({
     mutationFn: (payload) => api.post('/orders/phone', payload),
     onSuccess: () => {
-      toast.success('電話訂單建立成功');
+      toast.success('電話訂單已建立');
       setPhoneOrder({ menuItemId: '', quantity: 1, note: '', memberPhone: '' });
       queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-delivery-orders'] });
+    }
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ id, status }) => api.patch(`/orders/${id}/status`, { status }),
+    onSuccess: () => {
+      toast.success('訂單狀態已更新');
+      queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+    }
+  });
+
+  const printMutation = useMutation({
+    mutationFn: (id) => api.post(`/orders/${id}/print`),
+    onSuccess: () => toast.success('補印指令已送出')
+  });
+
+  const deliveryStatusMutation = useMutation({
+    mutationFn: ({ id, status }) => api.patch(`/delivery/orders/${id}/status`, { status }),
+    onSuccess: () => {
+      toast.success('外送單狀態已更新');
       queryClient.invalidateQueries({ queryKey: ['admin-delivery-orders'] });
     }
   });
@@ -46,8 +73,9 @@ export default function OrdersPage() {
               <option value="">全部狀態</option>
               <option value="PENDING">待處理</option>
               <option value="PREPARING">製作中</option>
-              <option value="READY">待取餐</option>
+              <option value="READY">可取餐</option>
               <option value="COMPLETED">已完成</option>
+              <option value="CANCELLED">已取消</option>
             </select>
             <select className="admin-field max-w-52" value={filters.type} onChange={(event) => setFilters((current) => ({ ...current, type: event.target.value }))}>
               <option value="">全部類型</option>
@@ -60,35 +88,35 @@ export default function OrdersPage() {
 
           <div className="mt-5 space-y-3">
             {orders.map((order) => (
-              <div key={order.id} className="rounded-2xl bg-slate-50 p-4">
+              <button key={order.id} type="button" className="w-full rounded-2xl bg-slate-50 p-4 text-left transition hover:bg-brand-50" onClick={() => setSelectedOrder(order)}>
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="font-bold text-slate-900">{order.orderNumber}</div>
                     <div className="mt-1 text-sm text-slate-500">{order.type} / {order.status}</div>
                   </div>
                   <div className="text-right">
-                    <div className="font-semibold text-brand-700">NT${order.total}</div>
+                    <div className="font-semibold text-brand-700">{formatCurrency(order.total)}</div>
                     <div className="text-xs text-slate-500">{new Date(order.createdAt).toLocaleString('zh-TW')}</div>
                   </div>
                 </div>
                 <div className="mt-3 text-sm leading-7 text-slate-500">
                   {order.items.map((item) => `${item.menuItem.name} x${item.quantity}`).join('、')}
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </article>
 
         <article className="admin-panel p-5">
-          <h2 className="text-xl font-bold text-slate-900">新增電話訂單</h2>
+          <h2 className="text-xl font-bold text-slate-900">手動新增電話訂單</h2>
           <div className="mt-4 grid gap-3">
             <select className="admin-field" value={phoneOrder.menuItemId} onChange={(event) => setPhoneOrder((current) => ({ ...current, menuItemId: event.target.value }))}>
-              <option value="">選擇品項</option>
+              <option value="">請選擇品項</option>
               {menuItems.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
             <input className="admin-field" type="number" min="1" value={phoneOrder.quantity} onChange={(event) => setPhoneOrder((current) => ({ ...current, quantity: event.target.value }))} />
-            <input className="admin-field" placeholder="會員或來電電話" value={phoneOrder.memberPhone} onChange={(event) => setPhoneOrder((current) => ({ ...current, memberPhone: event.target.value }))} />
-            <textarea className="admin-field min-h-24 resize-none" placeholder="備註" value={phoneOrder.note} onChange={(event) => setPhoneOrder((current) => ({ ...current, note: event.target.value }))} />
+            <input className="admin-field" placeholder="會員手機，可不填" value={phoneOrder.memberPhone} onChange={(event) => setPhoneOrder((current) => ({ ...current, memberPhone: event.target.value }))} />
+            <textarea className="admin-field min-h-24 resize-none" placeholder="訂單備註" value={phoneOrder.note} onChange={(event) => setPhoneOrder((current) => ({ ...current, note: event.target.value }))} />
             <button
               type="button"
               className="admin-button"
@@ -110,24 +138,80 @@ export default function OrdersPage() {
       </section>
 
       <article className="admin-panel p-5">
-        <h2 className="text-xl font-bold text-slate-900">外送平台訂單</h2>
+        <h2 className="text-xl font-bold text-slate-900">外送整合訂單</h2>
         <div className="mt-5 space-y-3">
           {deliveryOrders.map((deliveryOrder) => (
             <div key={deliveryOrder.id} className="rounded-2xl bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-bold text-slate-900">{deliveryOrder.platform} / {deliveryOrder.order.orderNumber}</div>
                   <div className="mt-1 text-sm text-slate-500">{deliveryOrder.deliveryAddress || '未提供地址'}</div>
                 </div>
-                <div className="text-sm font-semibold text-brand-700">{deliveryOrder.status}</div>
+                <select className="admin-field max-w-52" value={deliveryOrder.status} onChange={(event) => deliveryStatusMutation.mutate({ id: deliveryOrder.id, status: event.target.value })}>
+                  <option value="RECEIVED">RECEIVED</option>
+                  <option value="ACCEPTED">ACCEPTED</option>
+                  <option value="PREPARING">PREPARING</option>
+                  <option value="READY">READY</option>
+                  <option value="COMPLETED">COMPLETED</option>
+                  <option value="CANCELLED">CANCELLED</option>
+                </select>
               </div>
             </div>
           ))}
           {deliveryOrders.length === 0 && (
-            <div className="admin-soft p-4 text-sm text-slate-500">尚未接收到外送平台訂單。</div>
+            <div className="admin-soft p-4 text-sm text-slate-500">目前沒有外送平台訂單。</div>
           )}
         </div>
       </article>
+
+      {selectedOrder && (
+        <Dialog title={`訂單詳情 ${selectedOrder.orderNumber}`} onClose={() => setSelectedOrder(null)} wide>
+          <div className="grid gap-4 lg:grid-cols-[0.9fr_1.1fr]">
+            <section className="space-y-4">
+              <div className="admin-soft p-4">
+                <div className="text-sm text-slate-500">訂單資訊</div>
+                <div className="mt-2 space-y-2 text-sm leading-7 text-slate-700">
+                  <div>類型：{selectedOrder.type}</div>
+                  <div>狀態：{selectedOrder.status}</div>
+                  <div>金額：{formatCurrency(selectedOrder.total)}</div>
+                  <div>付款：{selectedOrder.paymentMethod || '未設定'}</div>
+                  <div>桌號：{selectedOrder.table?.number || '無'}</div>
+                  <div>會員：{selectedOrder.member?.name || '一般客人'}</div>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                {['PENDING', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'].map((status) => (
+                  <button key={status} type="button" className="admin-ghost" onClick={() => statusMutation.mutate({ id: selectedOrder.id, status })}>
+                    設為 {status}
+                  </button>
+                ))}
+                <button type="button" className="admin-button" onClick={() => printMutation.mutate(selectedOrder.id)}>
+                  補印訂單
+                </button>
+              </div>
+            </section>
+
+            <section className="admin-soft p-4">
+              <h3 className="font-bold text-slate-900">餐點明細</h3>
+              <div className="mt-4 space-y-3">
+                {selectedOrder.items.map((item) => (
+                  <div key={item.id} className="rounded-2xl bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="font-semibold text-slate-900">{item.menuItem.name}</div>
+                      <div className="text-sm text-slate-500">x{item.quantity}</div>
+                    </div>
+                    {Array.isArray(item.addons) && item.addons.length > 0 && (
+                      <div className="mt-2 text-sm text-slate-500">{item.addons.map((addon) => addon.name).join('、')}</div>
+                    )}
+                    {item.note && <div className="mt-2 text-sm font-semibold text-amber-700">備註：{item.note}</div>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

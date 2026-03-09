@@ -30,6 +30,82 @@ function mapMenuItem(item) {
   };
 }
 
+async function upsertCategory(tx, categoryInput) {
+  const existing = await tx.category.findFirst({
+    where: {
+      name: categoryInput.name
+    }
+  });
+
+  if (existing) {
+    return tx.category.update({
+      where: { id: existing.id },
+      data: {
+        sortOrder: Number(categoryInput.sortOrder || 0),
+        isActive: categoryInput.isActive ?? true
+      }
+    });
+  }
+
+  return tx.category.create({
+    data: {
+      name: categoryInput.name,
+      sortOrder: Number(categoryInput.sortOrder || 0),
+      isActive: categoryInput.isActive ?? true
+    }
+  });
+}
+
+async function upsertAddOnGroup(tx, groupInput) {
+  const existing = await tx.addOnGroup.findFirst({
+    where: {
+      name: groupInput.name
+    }
+  });
+
+  if (existing) {
+    await tx.addOnOption.deleteMany({
+      where: {
+        groupId: existing.id
+      }
+    });
+
+    return tx.addOnGroup.update({
+      where: { id: existing.id },
+      data: {
+        required: groupInput.required ?? false,
+        maxSelect: Number(groupInput.maxSelect || 1),
+        options: {
+          create: (groupInput.options || []).map((option) => ({
+            name: option.name,
+            price: Number(option.price || 0)
+          }))
+        }
+      },
+      include: {
+        options: true
+      }
+    });
+  }
+
+  return tx.addOnGroup.create({
+    data: {
+      name: groupInput.name,
+      required: groupInput.required ?? false,
+      maxSelect: Number(groupInput.maxSelect || 1),
+      options: {
+        create: (groupInput.options || []).map((option) => ({
+          name: option.name,
+          price: Number(option.price || 0)
+        }))
+      }
+    },
+    include: {
+      options: true
+    }
+  });
+}
+
 router.get('/categories', optionalAuth, asyncHandler(async (_req, res) => {
   const categories = await prisma.category.findMany({
     orderBy: {
@@ -64,6 +140,199 @@ router.post('/categories', authenticate, authorize('OWNER', 'MANAGER'), asyncHan
   res.status(201).json({
     success: true,
     data: category
+  });
+}));
+
+router.put('/categories/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
+  const category = await prisma.category.update({
+    where: {
+      id: Number(req.params.id)
+    },
+    data: {
+      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
+      ...(req.body.sortOrder !== undefined ? { sortOrder: Number(req.body.sortOrder) } : {}),
+      ...(req.body.isActive !== undefined ? { isActive: Boolean(req.body.isActive) } : {})
+    }
+  });
+
+  res.json({
+    success: true,
+    data: category
+  });
+}));
+
+router.get('/export', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (_req, res) => {
+  const categories = await prisma.category.findMany({
+    orderBy: {
+      sortOrder: 'asc'
+    }
+  });
+  const addOnGroups = await prisma.addOnGroup.findMany({
+    include: {
+      options: true
+    },
+    orderBy: {
+      createdAt: 'asc'
+    }
+  });
+  const items = await prisma.menuItem.findMany({
+    include: MENU_ITEM_INCLUDE,
+    orderBy: [
+      { categoryId: 'asc' },
+      { name: 'asc' }
+    ]
+  });
+
+  res.json({
+    success: true,
+    data: {
+      exportedAt: new Date().toISOString(),
+      categories: categories.map((category) => ({
+        name: category.name,
+        sortOrder: category.sortOrder,
+        isActive: category.isActive
+      })),
+      addOnGroups: addOnGroups.map((group) => ({
+        name: group.name,
+        required: group.required,
+        maxSelect: group.maxSelect,
+        options: group.options.map((option) => ({
+          name: option.name,
+          price: option.price
+        }))
+      })),
+      items: items.map((item) => ({
+        name: item.name,
+        categoryName: item.category.name,
+        basePrice: item.basePrice,
+        cost: item.cost,
+        stock: item.stock,
+        stockAlert: item.stockAlert,
+        isActive: item.isActive,
+        emoji: item.emoji,
+        description: item.description,
+        imageUrl: item.imageUrl,
+        timePricing: item.timePricing || [],
+        addOnGroupNames: item.menuItemAddOns.map((entry) => entry.addOnGroup.name)
+      }))
+    }
+  });
+}));
+
+router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
+  const importPayload = req.body.data || req.body;
+  const replaceAll = Boolean(req.body.replaceAll);
+  const categories = Array.isArray(importPayload.categories) ? importPayload.categories : [];
+  const addOnGroups = Array.isArray(importPayload.addOnGroups) ? importPayload.addOnGroups : [];
+  const items = Array.isArray(importPayload.items) ? importPayload.items : [];
+
+  if (categories.length === 0 || items.length === 0) {
+    throw new HttpError(400, '匯入資料至少需要 categories 與 items');
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    if (replaceAll) {
+      await tx.menuItem.updateMany({
+        data: { isActive: false },
+        where: {}
+      });
+      await tx.category.updateMany({
+        data: { isActive: false },
+        where: {}
+      });
+      await tx.menuItemAddOnGroup.deleteMany({});
+      await tx.addOnOption.deleteMany({});
+      await tx.addOnGroup.deleteMany({});
+    }
+
+    const categoryMap = new Map();
+    for (const categoryInput of categories) {
+      const category = await upsertCategory(tx, categoryInput);
+      categoryMap.set(category.name, category);
+    }
+
+    const addOnGroupMap = new Map();
+    for (const groupInput of addOnGroups) {
+      const group = await upsertAddOnGroup(tx, groupInput);
+      addOnGroupMap.set(group.name, group);
+    }
+
+    let importedItems = 0;
+
+    for (const itemInput of items) {
+      const category = categoryMap.get(itemInput.categoryName || itemInput.category);
+      if (!category) {
+        throw new HttpError(400, `找不到品項分類：${itemInput.categoryName || itemInput.category}`);
+      }
+
+      const existingItem = await tx.menuItem.findFirst({
+        where: {
+          name: itemInput.name,
+          categoryId: category.id
+        }
+      });
+
+      const itemData = {
+        name: itemInput.name,
+        categoryId: category.id,
+        basePrice: Number(itemInput.basePrice || 0),
+        cost: Number(itemInput.cost || 0),
+        stock: Number(itemInput.stock || 0),
+        stockAlert: Number(itemInput.stockAlert || 5),
+        isActive: itemInput.isActive ?? true,
+        emoji: itemInput.emoji || null,
+        description: itemInput.description || null,
+        imageUrl: itemInput.imageUrl || null,
+        timePricing: itemInput.timePricing || []
+      };
+
+      const menuItem = existingItem
+        ? await tx.menuItem.update({
+            where: { id: existingItem.id },
+            data: itemData
+          })
+        : await tx.menuItem.create({
+            data: itemData
+          });
+
+      await tx.menuItemAddOnGroup.deleteMany({
+        where: {
+          menuItemId: menuItem.id
+        }
+      });
+
+      const linkedGroupNames = [...new Set(
+        (itemInput.addOnGroupNames || itemInput.addOnGroups || [])
+          .map((entry) => (typeof entry === 'string' ? entry : entry?.name))
+          .filter(Boolean)
+      )];
+      for (const groupName of linkedGroupNames) {
+        const group = addOnGroupMap.get(groupName);
+        if (!group) {
+          continue;
+        }
+
+        await tx.menuItemAddOnGroup.create({
+          data: {
+            menuItemId: menuItem.id,
+            addOnGroupId: group.id
+          }
+        });
+      }
+
+      importedItems += 1;
+    }
+
+    return {
+      importedCategories: categoryMap.size,
+      importedAddOnGroups: addOnGroupMap.size,
+      importedItems
+    };
+  });
+
+  res.json({
+    success: true,
+    data: result
   });
 }));
 

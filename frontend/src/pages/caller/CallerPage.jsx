@@ -44,17 +44,13 @@ export default function CallerPage() {
     };
   }, [queueQuery]);
 
-  const preparingOrders = useMemo(() => (
-    (queueQuery.data || []).filter((order) => order.status === 'PREPARING')
-  ), [queueQuery.data]);
+  const preparingOrders = useMemo(
+    () => (queueQuery.data || []).filter((order) => order.status === 'PREPARING'),
+    [queueQuery.data]
+  );
 
   return (
-    <div
-      className="page-shell min-h-screen px-6 py-6"
-      onClick={() => {
-        soundLockedRef.current = false;
-      }}
-    >
+    <div className="page-shell min-h-screen px-6 py-6" onClick={() => { soundLockedRef.current = false; }}>
       <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[1fr_420px]">
         <section className="panel p-8">
           <p className="pill text-base">叫號顯示屏</p>
@@ -62,7 +58,7 @@ export default function CallerPage() {
           <div className="mt-10 rounded-[40px] border border-brand-100 bg-brand-50 p-12 text-center">
             <div className="text-sm font-semibold uppercase tracking-[0.5em] text-brand-600">Now Calling</div>
             <div className="mono mt-6 text-7xl font-black text-brand-700 lg:text-8xl">
-              {latestCall ? latestCall : '--'}
+              {latestCall || '--'}
             </div>
           </div>
 
@@ -76,7 +72,7 @@ export default function CallerPage() {
                 </div>
               ))}
               {preparingOrders.length === 0 && (
-                <div className="soft-panel p-5 text-sm text-slate-500">目前廚房沒有製作中的號碼。</div>
+                <div className="soft-panel p-5 text-sm text-slate-500">目前沒有餐點製作中。</div>
               )}
             </div>
           </div>
@@ -91,7 +87,7 @@ export default function CallerPage() {
               </div>
             ))}
             {history.length === 0 && (
-              <div className="soft-panel p-5 text-sm text-slate-500">等候下一筆完成叫號。</div>
+              <div className="soft-panel p-5 text-sm text-slate-500">目前尚未有叫號記錄。</div>
             )}
           </div>
         </aside>

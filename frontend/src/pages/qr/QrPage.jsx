@@ -9,9 +9,9 @@ export default function QrPage() {
     return (
       <div className="page-shell flex min-h-screen items-center justify-center px-4">
         <div className="panel max-w-xl p-8 text-center">
-          <h1 className="text-3xl font-black text-slate-900">找不到桌號</h1>
+          <h1 className="text-3xl font-black text-slate-900">桌號資訊不存在</h1>
           <p className="mt-4 text-base leading-7 text-slate-600">
-            請重新掃描桌上 QR Code，系統會自動帶入桌號並進入加點流程。
+            請重新掃描桌上的 QR Code。若仍無法進入，請聯繫櫃台協助確認桌號與網址設定。
           </p>
         </div>
       </div>

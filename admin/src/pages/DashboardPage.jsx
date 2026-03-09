@@ -29,9 +29,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4">
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="今日訂單數" value={dashboard.totalOrders} hint="本日有效訂單總量" />
-        <MetricCard label="今日營業額" value={`NT$${dashboard.totalRevenue.toFixed(0)}`} hint="不含已取消訂單" />
-        <MetricCard label="平均客單價" value={`NT$${dashboard.averageOrderValue.toFixed(0)}`} hint="平均每筆訂單金額" />
+        <MetricCard label="今日訂單數" value={dashboard.totalOrders} hint="已完成與進行中的有效訂單" />
+        <MetricCard label="今日營業額" value={`NT$${dashboard.totalRevenue.toFixed(0)}`} hint="已扣除取消訂單後的總收入" />
+        <MetricCard label="平均客單價" value={`NT$${dashboard.averageOrderValue.toFixed(0)}`} hint="每筆訂單平均金額" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -60,14 +60,14 @@ export default function DashboardPage() {
               </div>
             ))}
             {dashboard.lowStockItems.length === 0 && (
-              <div className="admin-soft p-4 text-sm text-slate-500">目前沒有低庫存商品。</div>
+              <div className="admin-soft p-4 text-sm text-slate-500">目前沒有低庫存品項。</div>
             )}
           </div>
         </article>
       </section>
 
       <article className="admin-panel p-5">
-        <h2 className="text-xl font-bold text-slate-900">今日營收分布</h2>
+        <h2 className="text-xl font-bold text-slate-900">今日每小時營業額</h2>
         <div className="mt-6 h-80">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={dashboard.hourlyOrders}>

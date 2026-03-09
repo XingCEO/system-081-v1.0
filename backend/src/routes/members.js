@@ -71,6 +71,25 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHand
   });
 }));
 
+router.put('/:id', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
+  const member = await prisma.member.update({
+    where: {
+      id: Number(req.params.id)
+    },
+    data: {
+      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
+      ...(req.body.phone !== undefined ? { phone: req.body.phone } : {}),
+      ...(req.body.birthday !== undefined ? { birthday: req.body.birthday ? new Date(req.body.birthday) : null } : {}),
+      ...(req.body.isBlacklisted !== undefined ? { isBlacklisted: Boolean(req.body.isBlacklisted) } : {})
+    }
+  });
+
+  res.json({
+    success: true,
+    data: member
+  });
+}));
+
 router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   const member = await prisma.member.findUnique({
     where: {

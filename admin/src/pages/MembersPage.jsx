@@ -1,12 +1,17 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 
+function defaultForm() {
+  return { id: null, name: '', phone: '', birthday: '', isBlacklisted: false };
+}
+
 export default function MembersPage() {
   const queryClient = useQueryClient();
   const [selectedMemberId, setSelectedMemberId] = useState(null);
-  const [form, setForm] = useState({ name: '', phone: '', birthday: '' });
+  const [form, setForm] = useState(defaultForm());
+  const [pointForm, setPointForm] = useState({ points: 0, type: 'ADJUST', note: '' });
 
   const membersQuery = useQuery({
     queryKey: ['admin-members'],
@@ -19,11 +24,40 @@ export default function MembersPage() {
     enabled: Boolean(selectedMemberId)
   });
 
-  const createMemberMutation = useMutation({
-    mutationFn: (payload) => api.post('/members', payload),
+  useEffect(() => {
+    if (memberDetailQuery.data) {
+      setForm({
+        id: memberDetailQuery.data.id,
+        name: memberDetailQuery.data.name,
+        phone: memberDetailQuery.data.phone,
+        birthday: memberDetailQuery.data.birthday ? memberDetailQuery.data.birthday.slice(0, 10) : '',
+        isBlacklisted: memberDetailQuery.data.isBlacklisted
+      });
+    }
+  }, [memberDetailQuery.data]);
+
+  const saveMutation = useMutation({
+    mutationFn: (payload) => (
+      payload.id ? api.put(`/members/${payload.id}`, payload) : api.post('/members', payload)
+    ),
     onSuccess: () => {
-      toast.success('已建立會員');
-      setForm({ name: '', phone: '', birthday: '' });
+      toast.success('會員資料已儲存');
+      queryClient.invalidateQueries({ queryKey: ['admin-members'] });
+      if (selectedMemberId) {
+        queryClient.invalidateQueries({ queryKey: ['admin-member-detail', selectedMemberId] });
+      }
+      if (!form.id) {
+        setForm(defaultForm());
+      }
+    }
+  });
+
+  const pointMutation = useMutation({
+    mutationFn: (payload) => api.post(`/members/${selectedMemberId}/points`, payload),
+    onSuccess: () => {
+      toast.success('點數異動完成');
+      setPointForm({ points: 0, type: 'ADJUST', note: '' });
+      queryClient.invalidateQueries({ queryKey: ['admin-member-detail', selectedMemberId] });
       queryClient.invalidateQueries({ queryKey: ['admin-members'] });
     }
   });
@@ -35,12 +69,18 @@ export default function MembersPage() {
     <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
       <section className="space-y-4">
         <article className="admin-panel p-5">
-          <h2 className="text-xl font-bold text-slate-900">新增會員</h2>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-xl font-bold text-slate-900">{form.id ? '編輯會員' : '新增會員'}</h2>
+            <button type="button" className="admin-ghost" onClick={() => { setSelectedMemberId(null); setForm(defaultForm()); }}>清空表單</button>
+          </div>
           <div className="mt-4 grid gap-3">
             <input className="admin-field" placeholder="姓名" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-            <input className="admin-field" placeholder="電話" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+            <input className="admin-field" placeholder="手機" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
             <input className="admin-field" type="date" value={form.birthday} onChange={(event) => setForm((current) => ({ ...current, birthday: event.target.value }))} />
-            <button type="button" className="admin-button" onClick={() => createMemberMutation.mutate(form)}>建立會員</button>
+            <label className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+              <input checked={form.isBlacklisted} onChange={(event) => setForm((current) => ({ ...current, isBlacklisted: event.target.checked }))} type="checkbox" /> 加入黑名單
+            </label>
+            <button type="button" className="admin-button" onClick={() => saveMutation.mutate(form)}>儲存會員</button>
           </div>
         </article>
 
@@ -61,15 +101,29 @@ export default function MembersPage() {
       <article className="admin-panel p-5">
         <h2 className="text-xl font-bold text-slate-900">會員詳情</h2>
         {!detail ? (
-          <div className="mt-5 admin-soft p-5 text-sm text-slate-500">從左側選一位會員查看消費紀錄與點數歷程。</div>
+          <div className="mt-5 admin-soft p-5 text-sm text-slate-500">請先從左側選擇會員，右側會顯示消費紀錄與點數異動。</div>
         ) : (
           <div className="mt-5 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
-            <section className="space-y-3">
+            <section className="space-y-4">
               <div className="admin-soft p-4">
                 <div className="font-bold text-slate-900">{detail.name}</div>
                 <div className="mt-1 text-sm text-slate-500">{detail.phone}</div>
                 <div className="mt-3 text-sm font-semibold text-brand-700">{detail.points} 點 / NT${detail.totalSpent}</div>
-                <div className="mt-2 text-sm text-slate-500">{detail.isBlacklisted ? '黑名單會員' : '正常會員'}</div>
+                <div className="mt-2 text-sm text-slate-500">{detail.isBlacklisted ? '黑名單會員' : '一般會員'}</div>
+              </div>
+
+              <div className="admin-soft p-4">
+                <h3 className="font-bold text-slate-900">手動調整點數</h3>
+                <div className="mt-3 grid gap-3">
+                  <select className="admin-field" value={pointForm.type} onChange={(event) => setPointForm((current) => ({ ...current, type: event.target.value }))}>
+                    <option value="ADJUST">調整</option>
+                    <option value="EARN">補點</option>
+                    <option value="REDEEM">扣點</option>
+                  </select>
+                  <input className="admin-field" type="number" value={pointForm.points} onChange={(event) => setPointForm((current) => ({ ...current, points: Number(event.target.value || 0) }))} />
+                  <textarea className="admin-field min-h-24 resize-none" placeholder="備註" value={pointForm.note} onChange={(event) => setPointForm((current) => ({ ...current, note: event.target.value }))} />
+                  <button type="button" className="admin-button" onClick={() => pointMutation.mutate(pointForm)}>送出點數異動</button>
+                </div>
               </div>
             </section>
 
@@ -86,7 +140,7 @@ export default function MembersPage() {
                 </div>
               </div>
               <div className="admin-soft p-4">
-                <h3 className="font-bold text-slate-900">集點紀錄</h3>
+                <h3 className="font-bold text-slate-900">點數紀錄</h3>
                 <div className="mt-3 space-y-3">
                   {detail.pointHistory.map((history) => (
                     <div key={history.id} className="rounded-2xl bg-slate-50 p-3 text-sm">

@@ -20,7 +20,7 @@ export default function LoginPage() {
       toast.success('登入成功');
       navigate(targetPath, { replace: true });
     } catch (error) {
-      toast.error(error.message || '登入失敗');
+      toast.error(error.message || '帳號或密碼錯誤');
     }
   };
 
@@ -31,7 +31,7 @@ export default function LoginPage() {
       toast.success('登入成功');
       navigate(targetPath, { replace: true });
     } catch (error) {
-      toast.error(error.message || 'PIN 碼錯誤');
+      toast.error(error.message || 'PIN 錯誤');
     }
   };
 
@@ -41,23 +41,23 @@ export default function LoginPage() {
         <section className="panel overflow-hidden p-8 lg:p-10">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-brand-600 text-2xl text-white">
-              早餐
+              🍳
             </div>
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.3em] text-brand-600">Breakfast POS</p>
-              <h1 className="mt-1 text-3xl font-black text-slate-900">早餐店完整營運中樞</h1>
+              <h1 className="mt-1 text-3xl font-black text-slate-900">早餐店營運工作台</h1>
             </div>
           </div>
 
           <p className="max-w-2xl text-lg leading-8 text-slate-600">
-            收銀、廚房、叫號、自助點餐與桌邊掃碼共用同一套資料流，現場節奏更順，後台報表也能即時追蹤。
+            收銀、廚房、叫號與會員流程都集中在同一套系統。店員可用 PIN 快速登入，主管也能用帳密管理完整營運資料。
           </p>
 
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {[
-              { icon: ShieldCheck, title: '角色權限', text: '老闆、店長、店員權限分流，保留營運安全性。' },
-              { icon: TimerReset, title: '即時推播', text: '新訂單與叫號同步送到 KDS 和叫號屏。' },
-              { icon: LockKeyhole, title: '雙重登入', text: '支援 PIN 快速登入與帳密登入，切換場景更順。' }
+              { icon: ShieldCheck, title: '權限分流', text: '依角色顯示不同功能，前台與後台權限分開管理。' },
+              { icon: TimerReset, title: '即時同步', text: 'POS 建單後，KDS 與叫號畫面會立刻收到最新狀態。' },
+              { icon: LockKeyhole, title: '快速登入', text: '支援員工 PIN 與管理者帳密登入，交班更順手。' }
             ].map(({ icon: Icon, title, text }) => (
               <article key={title} className="soft-panel p-5">
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
@@ -103,10 +103,10 @@ export default function LoginPage() {
                 />
               </div>
               <button className="action-button w-full py-3 text-lg" disabled={loading} type="submit">
-                {loading ? '登入中...' : '使用 PIN 進入'}
+                {loading ? '登入中...' : '使用 PIN 登入'}
               </button>
               <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-7 text-slate-600">
-                範例 PIN：`0000` 老闆、`1111` 店長、`2222` 店員。
+                測試 PIN：`0000` 老闆、`1111` 店長、`2222` 店員
               </div>
             </form>
           ) : (

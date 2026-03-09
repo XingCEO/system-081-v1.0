@@ -1,41 +1,61 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
+import { ArrowLeft, Clock3, Minus, Phone, Plus, Trash2 } from 'lucide-react';
 import api from '../../lib/api';
 import MenuCustomizerModal from './MenuCustomizerModal';
 
 function createCartItem(item, addons = [], note = '') {
   const addonTotal = addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+  const signature = JSON.stringify({
+    menuItemId: item.id,
+    addons: addons.map((addon) => addon.name).sort(),
+    note: note.trim()
+  });
+
   return {
     id: `${item.id}-${Date.now()}-${Math.random()}`,
+    signature,
     menuItemId: item.id,
     name: item.name,
     emoji: item.emoji,
     quantity: 1,
     unitPrice: Number(item.currentPrice ?? item.basePrice) + addonTotal,
     addons,
-    note
+    note: note.trim()
   };
 }
 
+function EmptyState({ title, description }) {
+  return (
+    <div className="soft-panel p-6 text-center">
+      <h3 className="text-lg font-bold text-slate-900">{title}</h3>
+      <p className="mt-2 text-sm leading-7 text-slate-500">{description}</p>
+    </div>
+  );
+}
+
 export default function OrderingFlow({ mode, tableNumber = '' }) {
-  const [step, setStep] = useState(mode === 'qr' ? 'menu' : 'welcome');
-  const [orderType, setOrderType] = useState(mode === 'qr' ? 'DINE_IN' : 'TAKEOUT');
+  const isQrMode = mode === 'qr';
+  const [step, setStep] = useState(isQrMode ? 'menu' : 'welcome');
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [cart, setCart] = useState([]);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [orderType, setOrderType] = useState(isQrMode ? 'DINE_IN' : 'TAKEOUT');
   const [memberPhone, setMemberPhone] = useState('');
   const [member, setMember] = useState(null);
   const [usePoints, setUsePoints] = useState(false);
-  const [selectedItem, setSelectedItem] = useState(null);
+  const [orderNote, setOrderNote] = useState('');
+  const [cart, setCart] = useState([]);
   const [orderResult, setOrderResult] = useState(null);
+  const [countdown, setCountdown] = useState(null);
 
   const categoriesQuery = useQuery({
-    queryKey: ['frontend-categories'],
+    queryKey: ['ordering-categories'],
     queryFn: () => api.get('/menu/categories')
   });
 
   const availabilityQuery = useQuery({
-    queryKey: ['frontend-availability'],
+    queryKey: ['ordering-availability'],
     queryFn: () => api.get('/menu/availability')
   });
 
@@ -44,10 +64,13 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     onSuccess: (data) => {
       setMember(data || null);
       if (data) {
-        toast.success(`找到會員 ${data.name}`);
+        toast.success(`已帶入會員 ${data.name}`);
       } else {
-        toast('此電話尚未建立會員');
+        toast('查無此會員，可直接結帳不綁會員');
       }
+    },
+    onError: (error) => {
+      toast.error(error.message || '會員查詢失敗');
     }
   });
 
@@ -55,14 +78,17 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     mutationFn: (payload) => api.post('/orders', payload),
     onSuccess: (data) => {
       setOrderResult(data);
-      setStep('done');
       setCart([]);
+      setUsePoints(false);
+      setOrderNote('');
       setMember(null);
       setMemberPhone('');
-      setUsePoints(false);
+      setStep('success');
+      setCountdown(isQrMode ? 8 : 10);
+      toast.success('訂單已送出');
     },
     onError: (error) => {
-      toast.error(error.message || '建立訂單失敗');
+      toast.error(error.message || '送出訂單失敗');
     }
   });
 
@@ -77,60 +103,103 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
   }, [categories, selectedCategory]);
 
   useEffect(() => {
+    if (step !== 'success' || countdown === null) {
+      return undefined;
+    }
+
+    if (countdown <= 0) {
+      setOrderResult(null);
+      setCountdown(null);
+      setStep(isQrMode ? 'menu' : 'welcome');
+      return undefined;
+    }
+
+    const timer = window.setTimeout(() => setCountdown((current) => current - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown, isQrMode, step]);
+
+  useEffect(() => {
+    if (mode !== 'kiosk') {
+      return undefined;
+    }
+
     let timeoutId;
-    const startTimer = () => {
-      clearTimeout(timeoutId);
-      timeoutId = setTimeout(() => {
-        if (mode === 'kiosk') {
+    const resetIdleTimer = () => {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => {
+        if (step !== 'success') {
           setStep('welcome');
           setCart([]);
           setMember(null);
           setMemberPhone('');
+          setUsePoints(false);
+          setOrderNote('');
         }
       }, 60000);
     };
 
-    startTimer();
-    window.addEventListener('touchstart', startTimer);
-    window.addEventListener('click', startTimer);
-    window.addEventListener('keydown', startTimer);
+    resetIdleTimer();
+    window.addEventListener('pointerdown', resetIdleTimer);
+    window.addEventListener('keydown', resetIdleTimer);
 
     return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('touchstart', startTimer);
-      window.removeEventListener('click', startTimer);
-      window.removeEventListener('keydown', startTimer);
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('pointerdown', resetIdleTimer);
+      window.removeEventListener('keydown', resetIdleTimer);
     };
   }, [mode, step]);
 
-  const filteredItems = useMemo(() => (
-    selectedCategory
-      ? items.filter((item) => item.categoryId === selectedCategory)
-      : items
-  ), [items, selectedCategory]);
+  const filteredItems = useMemo(
+    () => (selectedCategory ? items.filter((item) => item.categoryId === selectedCategory) : items),
+    [items, selectedCategory]
+  );
 
-  const subtotal = cart.reduce((sum, item) => sum + (item.unitPrice * item.quantity), 0);
-  const redeemPoints = usePoints ? Math.min(member?.points || 0, subtotal) : 0;
+  const subtotal = useMemo(
+    () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
+    [cart]
+  );
+  const redeemPoints = useMemo(
+    () => (usePoints ? Math.min(member?.points || 0, subtotal) : 0),
+    [member?.points, subtotal, usePoints]
+  );
   const total = Math.max(0, subtotal - redeemPoints);
 
+  const resetToStart = () => {
+    setStep(isQrMode ? 'menu' : 'welcome');
+    setCart([]);
+    setOrderResult(null);
+    setCountdown(null);
+    setMember(null);
+    setMemberPhone('');
+    setUsePoints(false);
+    setOrderNote('');
+  };
+
   const addToCart = (item, addons = [], note = '') => {
+    const nextItem = createCartItem(item, addons, note);
     setCart((current) => {
-      const signature = JSON.stringify({
-        menuItemId: item.id,
-        addons: addons.map((addon) => addon.name).sort(),
-        note
-      });
-      const existing = current.find((entry) => entry.signature === signature);
+      const existing = current.find((entry) => entry.signature === nextItem.signature);
       if (existing) {
         return current.map((entry) => (
-          entry.signature === signature
+          entry.signature === nextItem.signature
             ? { ...entry, quantity: entry.quantity + 1 }
             : entry
         ));
       }
 
-      return [...current, { ...createCartItem(item, addons, note), signature }];
+      return [...current, nextItem];
     });
+
+    toast.success(`${item.name} 已加入`);
+  };
+
+  const updateQuantity = (id, quantity) => {
+    if (quantity <= 0) {
+      setCart((current) => current.filter((item) => item.id !== id));
+      return;
+    }
+
+    setCart((current) => current.map((item) => (item.id === id ? { ...item, quantity } : item)));
   };
 
   const placeOrder = () => {
@@ -140,19 +209,20 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     }
 
     orderMutation.mutate({
-      type: mode === 'qr' ? 'DINE_IN' : orderType,
+      type: isQrMode ? 'DINE_IN' : orderType,
       source: mode,
-      tableNumber,
+      tableNumber: isQrMode ? tableNumber : undefined,
       memberId: member?.id,
       memberPhone: memberPhone || undefined,
+      note: orderNote || undefined,
       redeemPoints,
-      mergeExisting: mode === 'qr',
+      mergeExisting: isQrMode,
       autoPrint: false,
       items: cart.map((item) => ({
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         addons: item.addons,
-        note: item.note
+        note: item.note || null
       }))
     });
   };
@@ -160,67 +230,122 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
   if (step === 'welcome') {
     return (
       <div className="page-shell flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="panel max-w-5xl p-8 md:p-10">
-          <p className="pill">自助點餐 Kiosk</p>
-          <h1 className="mt-5 text-4xl font-black text-slate-900 md:text-5xl">歡迎光臨晨光早餐店</h1>
-          <p className="mt-4 text-lg leading-8 text-slate-600">
-            點一下開始，先選擇內用或外帶，接著就能快速完成餐點選購。
-          </p>
-          <div className="mt-10 grid gap-5 md:grid-cols-2">
-            {[
-              { type: 'DINE_IN', title: '內用', text: '直接取餐後入座，用餐流程最快。', emoji: '🍽️' },
-              { type: 'TAKEOUT', title: '外帶', text: '完成後等待叫號，櫃檯取餐帶走。', emoji: '🥡' }
-            ].map((entry) => (
-              <button
-                key={entry.type}
-                type="button"
-                onClick={() => {
-                  setOrderType(entry.type);
-                  setStep('menu');
-                }}
-                className="soft-panel group p-8 text-left transition hover:-translate-y-1 hover:border-brand-200"
-              >
-                <div className="text-5xl">{entry.emoji}</div>
-                <h2 className="mt-5 text-3xl font-black text-slate-900">{entry.title}</h2>
-                <p className="mt-3 text-base leading-7 text-slate-600">{entry.text}</p>
-              </button>
-            ))}
+        <div className="panel w-full max-w-6xl p-8 md:p-10">
+          <div className="grid gap-8 lg:grid-cols-[1fr_0.95fr]">
+            <div>
+              <p className="pill">自助點餐 Kiosk</p>
+              <h1 className="mt-5 text-4xl font-black text-slate-900 md:text-5xl">歡迎使用早餐店自助點餐</h1>
+              <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
+                選擇內用或外帶後即可開始點餐。完成後會顯示訂單號碼，系統也會同步送單到廚房顯示器。
+              </p>
+              <div className="mt-8 grid gap-4 md:grid-cols-3">
+                {[
+                  ['快速選餐', '商品依分類整理，適合觸控操作與高峰時段快速下單。'],
+                  ['即時送單', '建立訂單後會直接進入 KDS，內場不需要手動刷新。'],
+                  ['會員集點', '支援手機號碼查詢會員與點數折抵。']
+                ].map(([title, description]) => (
+                  <div key={title} className="soft-panel p-5">
+                    <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+                    <p className="mt-2 text-sm leading-7 text-slate-500">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-4">
+              {[
+                {
+                  type: 'DINE_IN',
+                  title: '內用點餐',
+                  description: '適合現場用餐顧客，取餐後可直接入座。',
+                  emoji: '🍽️'
+                },
+                {
+                  type: 'TAKEOUT',
+                  title: '外帶點餐',
+                  description: '下單後顯示取餐號碼，完成後會同步叫號。',
+                  emoji: '🥡'
+                }
+              ].map((entry) => (
+                <button
+                  key={entry.type}
+                  type="button"
+                  onClick={() => {
+                    setOrderType(entry.type);
+                    setStep('menu');
+                  }}
+                  className="soft-panel p-8 text-left transition hover:-translate-y-1 hover:border-brand-200"
+                >
+                  <div className="text-5xl">{entry.emoji}</div>
+                  <h2 className="mt-4 text-3xl font-black text-slate-900">{entry.title}</h2>
+                  <p className="mt-3 text-base leading-7 text-slate-600">{entry.description}</p>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
-  if (step === 'done' && orderResult) {
+  if (step === 'success' && orderResult) {
     return (
       <div className="page-shell flex min-h-screen items-center justify-center px-4 py-10">
         <div className="panel w-full max-w-3xl p-10 text-center">
-          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-brand-50 text-4xl text-brand-600">
+          <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-brand-50 text-5xl text-brand-600">
             ✓
           </div>
-          <p className="mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">訂單建立完成</p>
-          <h1 className="mt-3 text-5xl font-black text-slate-900">{orderResult.orderNumber}</h1>
+          <p className="mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">訂單送出成功</p>
+          <h1 className="mono mt-3 text-5xl font-black text-slate-900">{orderResult.orderNumber}</h1>
           <p className="mt-5 text-lg leading-8 text-slate-600">
-            餐點已送進廚房，請留意叫號畫面。完成後會顯示最新叫號。
+            {isQrMode
+              ? `桌號 ${tableNumber} 已完成加點。若還要追加餐點，可直接回到點餐頁面繼續操作。`
+              : '請記下您的取餐號碼，餐點完成後會在叫號畫面顯示並播放提示音。'}
           </p>
-          <button
-            type="button"
-            className="action-button mt-8 px-8 py-3 text-lg"
-            onClick={() => {
-              setOrderResult(null);
-              setStep(mode === 'qr' ? 'menu' : 'welcome');
-            }}
-          >
-            重新點餐
-          </button>
+
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <div className="soft-panel p-5 text-left">
+              <div className="text-sm text-slate-500">訂單金額</div>
+              <div className="mono mt-2 text-3xl font-black text-brand-700">NT${orderResult.total}</div>
+            </div>
+            <div className="soft-panel p-5 text-left">
+              <div className="text-sm text-slate-500">返回倒數</div>
+              <div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900">
+                <Clock3 size={24} />
+                {countdown ?? 0}s
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            <button type="button" className="action-button px-8 py-3 text-lg" onClick={resetToStart}>
+              {isQrMode ? '回到加點頁' : '回首頁'}
+            </button>
+            {isQrMode && (
+              <button
+                type="button"
+                className="ghost-button px-8 py-3 text-lg"
+                onClick={() => {
+                  setOrderResult(null);
+                  setCountdown(null);
+                  setStep('menu');
+                }}
+              >
+                立即再加點
+              </button>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
+  const isLoading = categoriesQuery.isLoading || availabilityQuery.isLoading;
+  const hasError = categoriesQuery.isError || availabilityQuery.isError;
+
   return (
     <div className="page-shell min-h-screen px-4 py-4 md:px-6">
-      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[130px_minmax(0,1fr)_360px]">
+      <div className="mx-auto flex min-h-[calc(100vh-2rem)] max-w-7xl flex-col gap-4 lg:grid lg:grid-cols-[140px_minmax(0,1fr)_380px]">
         <aside className="panel hidden p-3 lg:block">
           {categories.map((category) => (
             <button
@@ -239,54 +364,92 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           ))}
         </aside>
 
-        <main className="panel flex min-h-[70vh] flex-col overflow-hidden">
+        <main className="panel flex min-h-[72vh] flex-col overflow-hidden">
           <header className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div>
-              <p className="pill">{mode === 'qr' ? `桌號 ${tableNumber}` : orderType === 'DINE_IN' ? '內用' : '外帶'}</p>
+              <div className="flex flex-wrap items-center gap-2">
+                {!isQrMode && (
+                  <button type="button" className="ghost-button px-3 py-2" onClick={() => setStep('welcome')}>
+                    <ArrowLeft size={16} />
+                    返回
+                  </button>
+                )}
+                <p className="pill">
+                  {isQrMode ? `桌號 ${tableNumber}` : orderType === 'DINE_IN' ? '內用' : '外帶'}
+                </p>
+              </div>
               <h1 className="mt-3 text-2xl font-black text-slate-900">
-                {mode === 'qr' ? '桌邊加點' : '請選擇您的餐點'}
+                {isQrMode ? '掃碼點餐 / 追加餐點' : '請選擇想吃的餐點'}
               </h1>
             </div>
+
             {availability.paused && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                目前店家暫停點餐中
+                店家目前暫停接單，請稍後再試
               </div>
             )}
           </header>
 
-          <div className="grid gap-3 overflow-y-auto p-5 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredItems.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={!item.available}
-                onClick={() => {
-                  if (item.addOnGroups?.length > 0) {
-                    setSelectedItem(item);
-                  } else {
-                    addToCart(item);
-                  }
-                }}
-                className={`soft-panel p-5 text-left transition ${
-                  item.available
-                    ? 'hover:-translate-y-1 hover:border-brand-200'
-                    : 'cursor-not-allowed opacity-50'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="text-4xl">{item.emoji || '🍳'}</div>
-                  {!item.available && <span className="pill border-red-100 bg-red-50 text-red-600">售完</span>}
-                </div>
-                <h2 className="mt-4 text-xl font-bold text-slate-900">{item.name}</h2>
-                <p className="mt-2 min-h-12 text-sm leading-7 text-slate-500">{item.description}</p>
-                <div className="mt-4 flex items-center justify-between">
-                  <div className="text-2xl font-black text-brand-600">${item.currentPrice}</div>
-                  {item.currentPrice !== item.basePrice && (
-                    <div className="mono text-sm text-slate-400 line-through">${item.basePrice}</div>
-                  )}
-                </div>
-              </button>
-            ))}
+          <div className="border-b border-slate-100 px-5 py-4 lg:hidden">
+            <div className="flex gap-2 overflow-x-auto">
+              {categories.map((category) => (
+                <button
+                  key={category.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(category.id)}
+                  className={`whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold ${
+                    selectedCategory === category.id ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600'
+                  }`}
+                >
+                  {category.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto p-5">
+            {isLoading && <EmptyState title="菜單載入中" description="正在讀取最新可販售商品..." />}
+            {hasError && <EmptyState title="菜單載入失敗" description="請稍後重新整理，或通知櫃台協助處理。" />}
+            {!isLoading && !hasError && filteredItems.length === 0 && (
+              <EmptyState title="目前沒有可點商品" description="請切換分類，或等待店家恢復供應。" />
+            )}
+
+            {!isLoading && !hasError && filteredItems.length > 0 && (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {filteredItems.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    disabled={!item.available}
+                    onClick={() => {
+                      if (item.addOnGroups?.length > 0) {
+                        setSelectedItem(item);
+                        return;
+                      }
+                      addToCart(item);
+                    }}
+                    className={`soft-panel p-5 text-left transition ${
+                      item.available ? 'hover:-translate-y-1 hover:border-brand-200' : 'cursor-not-allowed opacity-50'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="text-4xl">{item.emoji || '🍳'}</span>
+                      {!item.available && <span className="pill border-red-100 bg-red-50 text-red-600">售完</span>}
+                    </div>
+                    <h2 className="mt-4 text-xl font-bold text-slate-900">{item.name}</h2>
+                    <p className="mt-2 min-h-12 text-sm leading-7 text-slate-500">
+                      {item.description || '現點現做，支援加料與備註。'}
+                    </p>
+                    <div className="mt-4 flex items-center justify-between">
+                      <div className="mono text-2xl font-black text-brand-600">NT${item.currentPrice}</div>
+                      {item.currentPrice !== item.basePrice && (
+                        <div className="mono text-sm text-slate-400 line-through">NT${item.basePrice}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </main>
 
@@ -294,32 +457,45 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500">購物車</p>
-              <h2 className="text-2xl font-black text-slate-900">{cart.reduce((sum, item) => sum + item.quantity, 0)} 件商品</h2>
+              <h2 className="text-2xl font-black text-slate-900">{cart.reduce((sum, item) => sum + item.quantity, 0)} 份餐點</h2>
             </div>
-            <span className="pill">{mode === 'qr' ? '桌邊點餐' : '自助點餐'}</span>
+            <span className="pill">{isQrMode ? '可合併既有訂單' : '完成後自動送單'}</span>
           </div>
 
           <div className="mt-5 flex-1 space-y-3 overflow-y-auto">
             {cart.length === 0 ? (
-              <div className="soft-panel p-5 text-sm leading-7 text-slate-500">
-                先從左邊選餐點，加入後會在這裡顯示。
-              </div>
+              <EmptyState title="購物車還是空的" description="點選左側商品後，餐點會出現在這裡。" />
             ) : (
               cart.map((item) => (
                 <div key={item.id} className="soft-panel p-4">
                   <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-bold text-slate-900">{item.name}</h3>
-                      <p className="mono mt-1 text-sm text-brand-600">${item.unitPrice}</p>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span>{item.emoji || '🍳'}</span>
+                        <h3 className="truncate font-bold text-slate-900">{item.name}</h3>
+                      </div>
+                      <p className="mono mt-1 text-sm text-brand-700">NT${item.unitPrice}</p>
                       {item.addons.length > 0 && (
-                        <p className="mt-2 text-xs leading-6 text-slate-500">{item.addons.map((addon) => addon.name).join('、')}</p>
+                        <p className="mt-2 text-xs leading-6 text-slate-500">
+                          {item.addons.map((addon) => addon.name).join('、')}
+                        </p>
                       )}
+                      {item.note && <p className="mt-2 text-xs font-semibold text-amber-700">備註：{item.note}</p>}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button type="button" className="ghost-button h-10 w-10 rounded-full p-0" onClick={() => setCart((current) => current.map((entry) => entry.id === item.id ? { ...entry, quantity: Math.max(1, entry.quantity - 1) } : entry))}>-</button>
-                      <span className="mono w-8 text-center text-sm font-semibold">{item.quantity}</span>
-                      <button type="button" className="ghost-button h-10 w-10 rounded-full p-0" onClick={() => setCart((current) => current.map((entry) => entry.id === item.id ? { ...entry, quantity: entry.quantity + 1 } : entry))}>+</button>
-                    </div>
+
+                    <button type="button" className="ghost-button h-10 w-10 rounded-full p-0" onClick={() => updateQuantity(item.id, 0)}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    <button type="button" className="ghost-button h-10 w-10 rounded-full p-0" onClick={() => updateQuantity(item.id, item.quantity - 1)}>
+                      <Minus size={16} />
+                    </button>
+                    <span className="mono w-10 text-center text-base font-semibold">{item.quantity}</span>
+                    <button type="button" className="ghost-button h-10 w-10 rounded-full p-0" onClick={() => updateQuantity(item.id, item.quantity + 1)}>
+                      <Plus size={16} />
+                    </button>
                   </div>
                 </div>
               ))
@@ -327,42 +503,60 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           </div>
 
           <div className="mt-5 space-y-3 border-t border-slate-100 pt-5">
-            <input
-              className="field"
-              placeholder="輸入會員電話"
-              value={memberPhone}
-              onChange={(event) => setMemberPhone(event.target.value)}
-            />
-            <button type="button" className="ghost-button w-full" onClick={() => lookupMemberMutation.mutate(memberPhone)}>
-              查詢會員
-            </button>
+            <div className="flex gap-3">
+              <input
+                className="field"
+                placeholder="輸入會員手機"
+                value={memberPhone}
+                onChange={(event) => setMemberPhone(event.target.value)}
+              />
+              <button type="button" className="ghost-button px-4" onClick={() => lookupMemberMutation.mutate(memberPhone)}>
+                <Phone size={16} />
+              </button>
+            </div>
+
             {member && (
               <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-                會員 {member.name}，目前 {member.points} 點
+                會員 {member.name}，目前點數 {member.points}
               </div>
             )}
+
             {member && (
               <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
                 <input type="checkbox" checked={usePoints} onChange={(event) => setUsePoints(event.target.checked)} />
-                使用點數折抵（最多 {member.points} 元）
+                使用點數折抵，本次最多可折抵 {Math.min(member.points, subtotal)} 點
               </label>
             )}
+
+            <textarea
+              className="field min-h-24 resize-none"
+              placeholder={isQrMode ? '可留下桌邊點餐備註，例如餐具需求或不要醬。' : '可留下整筆訂單備註，例如分袋、晚點取餐。'}
+              value={orderNote}
+              onChange={(event) => setOrderNote(event.target.value)}
+            />
+
             <div className="soft-panel p-4">
               <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
                 <span>小計</span>
-                <span className="mono">${subtotal}</span>
+                <span className="mono">NT${subtotal}</span>
               </div>
               <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
                 <span>點數折抵</span>
-                <span className="mono">-${redeemPoints}</span>
+                <span className="mono">-NT${redeemPoints}</span>
               </div>
               <div className="flex items-center justify-between text-lg font-black text-slate-900">
                 <span>合計</span>
-                <span className="mono">${total}</span>
+                <span className="mono">NT${total}</span>
               </div>
             </div>
-            <button type="button" className="action-button w-full py-3 text-lg" disabled={availability.paused || orderMutation.isPending} onClick={placeOrder}>
-              {orderMutation.isPending ? '送單中...' : '確認送出'}
+
+            <button
+              type="button"
+              className="action-button w-full py-3 text-lg"
+              disabled={availability.paused || orderMutation.isPending}
+              onClick={placeOrder}
+            >
+              {orderMutation.isPending ? '送單中...' : isQrMode ? '確認加點並送出' : '確認下單'}
             </button>
           </div>
         </aside>
