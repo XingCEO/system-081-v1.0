@@ -15,9 +15,14 @@ function normalizeFoodpandaWebhook(payload) {
     throw new HttpError(400, 'foodpanda webhook payload 不可為空');
   }
 
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    throw new HttpError(400, 'foodpanda webhook 缺少餐點內容');
+  }
+
   return {
     type: 'DELIVERY',
     source: 'foodpanda',
+    trustSubmittedPrices: true,
     note: payload.note || payload.remark || '',
     memberPhone: payload.customer?.phone || '',
     items: (payload.items || []).map((item) => ({
@@ -45,9 +50,14 @@ function normalizeUberEatsWebhook(payload) {
     throw new HttpError(400, 'Uber Eats webhook payload 不可為空');
   }
 
+  if (!Array.isArray(payload.items) || payload.items.length === 0) {
+    throw new HttpError(400, 'Uber Eats webhook 缺少餐點內容');
+  }
+
   return {
     type: 'DELIVERY',
     source: 'ubereats',
+    trustSubmittedPrices: true,
     note: payload.note || payload.specialInstructions || '',
     memberPhone: payload.eater?.phone || '',
     items: (payload.items || []).map((item) => ({

@@ -1,10 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import api from '../lib/api';
+import { clearAuthSession, readAuthSession } from '../lib/authSession';
 
 export const useAdminAuthStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
@@ -24,7 +25,17 @@ export const useAdminAuthStore = create(
           throw error;
         }
       },
-      logout() {
+      async logout() {
+        try {
+          const { refreshToken } = readAuthSession();
+          if (refreshToken) {
+            await api.post('/auth/logout', { refreshToken }, { skipAuthRefresh: true });
+          }
+        } catch {
+          // Ignore logout transport failures and still clear the local session.
+        }
+
+        clearAuthSession();
         set({
           user: null,
           accessToken: null,

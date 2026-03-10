@@ -24,6 +24,24 @@ async function request(path, options = {}) {
   return body.data ?? body;
 }
 
+async function requestFailure(path, options = {}, expectedStatus = 400) {
+  const response = await fetch(`${baseUrl}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+
+  const body = await response.json().catch(() => ({}));
+
+  if (response.status !== expectedStatus) {
+    throw new Error(`Expected ${expectedStatus} @ ${path}, received ${response.status}`);
+  }
+
+  return body;
+}
+
 async function main() {
   console.log(`Smoke test base URL: ${baseUrl}`);
 
@@ -40,6 +58,14 @@ async function main() {
     Authorization: `Bearer ${login.accessToken}`
   };
 
+  const refreshed = await request('/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({
+      refreshToken: login.refreshToken
+    })
+  });
+  assert(refreshed.accessToken && refreshed.refreshToken, 'refresh token 換發失敗');
+
   const availability = await request('/menu/availability');
   assert(Array.isArray(availability.items) && availability.items.length > 0, 'menu/availability 沒有可販售品項');
 
@@ -49,6 +75,19 @@ async function main() {
 
   const member = await request('/members/lookup?phone=0912345678');
   assert(member?.phone === '0912345678', '會員查詢失敗');
+  assert(member.totalSpent === undefined && member.birthday === undefined, '公開會員查詢不應回傳敏感欄位');
+
+  await requestFailure('/orders', {
+    method: 'POST',
+    body: JSON.stringify({
+      items: [
+        {
+          menuItemId: normalItem?.id || comboItem?.id,
+          quantity: -1
+        }
+      ]
+    })
+  }, 400);
 
   const orderItems = [];
 
@@ -120,10 +159,27 @@ async function main() {
   });
   assert(cancelledOrder.status === 'CANCELLED', '訂單無法更新為 CANCELLED');
 
+  const idempotentCancelled = await request(`/orders/${createdOrder.id}/status`, {
+    method: 'PATCH',
+    headers: authHeaders,
+    body: JSON.stringify({ status: 'CANCELLED' })
+  });
+  assert(idempotentCancelled.status === 'CANCELLED', '重複取消訂單應保持在 CANCELLED 狀態');
+
   const exportData = await request('/menu/export', {
     headers: authHeaders
   });
   assert(Array.isArray(exportData.items) && exportData.items.length > 0, '菜單匯出資料異常');
+
+  const importResult = await request('/menu/import', {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({
+      replaceAll: false,
+      data: exportData
+    })
+  });
+  assert(importResult.importedItems > 0, '菜單匯入驗證失敗');
 
   const backup = await request('/settings/backup', {
     headers: authHeaders

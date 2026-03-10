@@ -248,6 +248,11 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
       return;
     }
 
+    if (isQrMode && !tableNumber) {
+      toast.error('目前缺少桌號資訊，請重新掃描桌邊 QR Code');
+      return;
+    }
+
     orderMutation.mutate({
       type: isQrMode ? 'DINE_IN' : orderType,
       source: mode,

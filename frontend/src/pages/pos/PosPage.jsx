@@ -169,7 +169,7 @@ function CheckoutModal({ open, onClose, tables, onSubmit }) {
                     className="field mono"
                     inputMode="numeric"
                     value={cart.discount}
-                    onChange={(event) => cart.setOrderField('discount', Number(event.target.value || 0))}
+                    onChange={(event) => cart.setOrderField('discount', Math.max(0, Number(event.target.value || 0)))}
                   />
                 </div>
                 <div>
@@ -183,7 +183,7 @@ function CheckoutModal({ open, onClose, tables, onSubmit }) {
                     max={maxRedeemPoints}
                     value={cart.redeemPoints}
                     onChange={(event) => {
-                      const nextValue = Math.min(Number(event.target.value || 0), maxRedeemPoints);
+                      const nextValue = Math.max(0, Math.min(Number(event.target.value || 0), maxRedeemPoints));
                       cart.setOrderField('redeemPoints', nextValue);
                     }}
                   />
@@ -375,6 +375,16 @@ export default function PosPage() {
   };
 
   const handleSubmitOrder = (payment) => {
+    if (cart.orderType === 'DINE_IN' && !cart.tableNumber) {
+      toast.error('內用訂單請先選擇桌號');
+      return;
+    }
+
+    if ((payment.paymentMethod || 'CASH') === 'CASH' && Number(payment.receivedAmount || 0) < cart.total()) {
+      toast.error('現金實收金額不足');
+      return;
+    }
+
     createOrderMutation.mutate({
       type: cart.orderType,
       tableNumber: cart.tableNumber || undefined,

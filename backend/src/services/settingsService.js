@@ -1,4 +1,14 @@
 const prisma = require('../lib/prisma');
+const HttpError = require('../utils/HttpError');
+
+const ALLOWED_SETTING_KEYS = new Set([
+  'store_profile',
+  'points_rule',
+  'tax_rule',
+  'ordering_state',
+  'notification_settings',
+  'printer_settings'
+]);
 
 async function getSetting(key, fallback = null) {
   const record = await prisma.setting.findUnique({
@@ -9,6 +19,10 @@ async function getSetting(key, fallback = null) {
 }
 
 async function upsertSetting(key, value) {
+  if (!ALLOWED_SETTING_KEYS.has(key)) {
+    throw new HttpError(400, `不支援的系統設定鍵值：${key}`);
+  }
+
   return prisma.setting.upsert({
     where: { key },
     update: { value },
@@ -64,5 +78,6 @@ async function getSystemSettings() {
 module.exports = {
   getSetting,
   upsertSetting,
-  getSystemSettings
+  getSystemSettings,
+  ALLOWED_SETTING_KEYS
 };

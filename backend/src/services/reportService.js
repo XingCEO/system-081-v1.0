@@ -5,11 +5,16 @@ const isoWeek = require('dayjs/plugin/isoWeek');
 
 const prisma = require('../lib/prisma');
 const { getTodayRange } = require('../utils/order');
+const HttpError = require('../utils/HttpError');
 
 dayjs.extend(isoWeek);
 
 function resolveRange({ date, week, month, range }) {
   if (date) {
+    if (!dayjs(date).isValid()) {
+      throw new HttpError(400, '日期格式不正確');
+    }
+
     return {
       start: dayjs(date).startOf('day').toDate(),
       end: dayjs(date).endOf('day').toDate(),
@@ -19,15 +24,23 @@ function resolveRange({ date, week, month, range }) {
 
   if (week) {
     const target = week.includes('W') ? dayjs(`${week}-1`) : dayjs(week);
+    if (!target.isValid()) {
+      throw new HttpError(400, '週報日期格式不正確');
+    }
+
     return {
-      start: target.startOf('week').toDate(),
-      end: target.endOf('week').toDate(),
-      label: `${target.startOf('week').format('YYYY-MM-DD')} ~ ${target.endOf('week').format('YYYY-MM-DD')}`
+      start: target.startOf('isoWeek').toDate(),
+      end: target.endOf('isoWeek').toDate(),
+      label: `${target.startOf('isoWeek').format('YYYY-MM-DD')} ~ ${target.endOf('isoWeek').format('YYYY-MM-DD')}`
     };
   }
 
   if (month) {
     const target = dayjs(`${month}-01`);
+    if (!target.isValid()) {
+      throw new HttpError(400, '月份格式不正確');
+    }
+
     return {
       start: target.startOf('month').toDate(),
       end: target.endOf('month').toDate(),
@@ -37,6 +50,10 @@ function resolveRange({ date, week, month, range }) {
 
   if (range) {
     const [start, end] = String(range).split(',');
+    if (!dayjs(start).isValid() || !dayjs(end || start).isValid()) {
+      throw new HttpError(400, '報表區間格式不正確');
+    }
+
     return {
       start: dayjs(start).startOf('day').toDate(),
       end: dayjs(end || start).endOf('day').toDate(),

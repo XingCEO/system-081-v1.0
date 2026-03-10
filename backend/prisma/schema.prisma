@@ -311,6 +311,7 @@ model DeliveryOrder {
   updatedAt        DateTime         @updatedAt
   order            Order            @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
+  @@unique([platform, externalId])
   @@map("delivery_orders")
 }
 

@@ -96,6 +96,13 @@ router.get('/export', asyncHandler(async (req, res) => {
     return;
   }
 
+  if (exportType !== 'pdf' && exportType !== undefined) {
+    return res.status(400).json({
+      success: false,
+      message: '匯出格式只支援 excel 或 pdf'
+    });
+  }
+
   const buffer = await exportReportAsPdf(range);
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', 'attachment; filename="breakfast-pos-report.pdf"');

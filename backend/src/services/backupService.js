@@ -94,6 +94,14 @@ async function restoreFullBackup(payload, { replaceAll = true } = {}) {
     throw new HttpError(400, '備份檔內容不完整');
   }
 
+  if (backup.version !== undefined && Number(backup.version) > 1) {
+    throw new HttpError(400, '此備份檔版本較新，請先更新系統後再還原');
+  }
+
+  if (!Array.isArray(backup.users) || backup.users.length === 0) {
+    throw new HttpError(400, '備份檔缺少使用者資料，無法安全還原');
+  }
+
   return prisma.$transaction(async (tx) => {
     await tx.refreshToken.deleteMany({});
     await tx.notification.deleteMany({});

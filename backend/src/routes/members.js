@@ -4,15 +4,26 @@ const prisma = require('../lib/prisma');
 const asyncHandler = require('../utils/asyncHandler');
 const HttpError = require('../utils/HttpError');
 const { authenticate, authorize } = require('../middleware/auth');
+const { ensurePhone, optionalString, parseNonNegativeInteger, requireString } = require('../utils/validation');
 
 const router = express.Router();
 
-router.get('/lookup', asyncHandler(async (req, res) => {
-  const phone = req.query.phone;
-
-  if (!phone) {
-    throw new HttpError(400, '請提供電話');
+function sanitizeLookupMember(member) {
+  if (!member) {
+    return null;
   }
+
+  return {
+    id: member.id,
+    name: member.name,
+    phone: member.phone,
+    points: member.points,
+    isBlacklisted: member.isBlacklisted
+  };
+}
+
+router.get('/lookup', asyncHandler(async (req, res) => {
+  const phone = ensurePhone(req.query.phone);
 
   const member = await prisma.member.findUnique({
     where: { phone }
@@ -20,11 +31,11 @@ router.get('/lookup', asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    data: member
+    data: sanitizeLookupMember(member)
   });
 }));
 
-router.get('/', authenticate, asyncHandler(async (req, res) => {
+router.get('/', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const members = await prisma.member.findMany({
     where: req.query.search
       ? {
@@ -55,11 +66,11 @@ router.get('/', authenticate, asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
+router.post('/', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const member = await prisma.member.create({
     data: {
-      name: req.body.name,
-      phone: req.body.phone,
+      name: requireString(req.body.name, '會員名稱', { maxLength: 60 }),
+      phone: ensurePhone(req.body.phone),
       birthday: req.body.birthday ? new Date(req.body.birthday) : null,
       isBlacklisted: req.body.isBlacklisted ?? false
     }
@@ -71,14 +82,14 @@ router.post('/', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHand
   });
 }));
 
-router.put('/:id', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
+router.put('/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const member = await prisma.member.update({
     where: {
       id: Number(req.params.id)
     },
     data: {
-      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
-      ...(req.body.phone !== undefined ? { phone: req.body.phone } : {}),
+      ...(req.body.name !== undefined ? { name: requireString(req.body.name, '會員名稱', { maxLength: 60 }) } : {}),
+      ...(req.body.phone !== undefined ? { phone: ensurePhone(req.body.phone) } : {}),
       ...(req.body.birthday !== undefined ? { birthday: req.body.birthday ? new Date(req.body.birthday) : null } : {}),
       ...(req.body.isBlacklisted !== undefined ? { isBlacklisted: Boolean(req.body.isBlacklisted) } : {})
     }
@@ -90,7 +101,7 @@ router.put('/:id', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHa
   });
 }));
 
-router.get('/:id', authenticate, asyncHandler(async (req, res) => {
+router.get('/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const member = await prisma.member.findUnique({
     where: {
       id: Number(req.params.id)
@@ -119,11 +130,11 @@ router.get('/:id', authenticate, asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/:id/points', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
-  const points = Number(req.body.points);
+router.post('/:id/points', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
+  const points = parseNonNegativeInteger(req.body.points, '點數', { max: 999999 });
   const type = String(req.body.type || '').toUpperCase();
 
-  if (!['EARN', 'REDEEM', 'ADJUST'].includes(type)) {
+  if (!['EARN', 'REDEEM', 'ADJUST'].includes(type) || points <= 0) {
     throw new HttpError(400, '不支援的點數異動類型');
   }
 
@@ -138,6 +149,10 @@ router.post('/:id/points', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'),
   }
 
   const delta = type === 'REDEEM' ? -points : points;
+
+  if ((member.points + delta) < 0) {
+    throw new HttpError(400, '會員點數不足');
+  }
 
   const [updatedMember, transaction] = await prisma.$transaction([
     prisma.member.update({
@@ -156,7 +171,7 @@ router.post('/:id/points', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'),
         orderId: req.body.orderId ? Number(req.body.orderId) : null,
         points,
         type,
-        note: req.body.note || null
+        note: optionalString(req.body.note, { maxLength: 120 })
       }
     })
   ]);

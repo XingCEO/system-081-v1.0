@@ -25,6 +25,8 @@ fs.mkdirSync(uploadsDirectory, { recursive: true });
 
 initializeSocket(server);
 
+app.set('trust proxy', 1);
+
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({
   origin: createCorsOriginHandler(),
@@ -35,7 +37,15 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 app.use(rateLimit({
   windowMs: 60 * 1000,
-  max: 300
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: '請求過於頻繁，請稍後再試'
+    });
+  }
 }));
 app.use('/uploads', express.static(uploadsDirectory));
 

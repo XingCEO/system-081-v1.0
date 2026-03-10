@@ -4,21 +4,33 @@ import api from '../../lib/api';
 import { connectSocket } from '../../lib/socket';
 
 function playChime() {
-  const context = new AudioContext();
-  const oscillator = context.createOscillator();
-  const gain = context.createGain();
-  oscillator.connect(gain);
-  gain.connect(context.destination);
-  oscillator.frequency.value = 880;
-  gain.gain.value = 0.25;
-  oscillator.start();
-  oscillator.stop(context.currentTime + 0.25);
+  try {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      return;
+    }
+
+    const context = new AudioContextClass();
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.frequency.value = 880;
+    gain.gain.value = 0.25;
+    oscillator.start();
+    oscillator.stop(context.currentTime + 0.25);
+    oscillator.onended = () => {
+      context.close().catch(() => {});
+    };
+  } catch {
+    // Browsers may block autoplay before the screen is interacted with.
+  }
 }
 
 export default function CallerPage() {
   const [latestCall, setLatestCall] = useState(null);
   const [history, setHistory] = useState([]);
-  const soundLockedRef = useRef(false);
+  const soundLockedRef = useRef(true);
 
   const queueQuery = useQuery({
     queryKey: ['caller-queue'],
@@ -50,7 +62,7 @@ export default function CallerPage() {
   );
 
   return (
-    <div className="page-shell min-h-screen px-6 py-6" onClick={() => { soundLockedRef.current = false; }}>
+    <div className="page-shell min-h-screen px-6 py-6" onPointerDown={() => { soundLockedRef.current = false; }}>
       <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[1fr_420px]">
         <section className="panel p-8">
           <p className="pill text-base">叫號顯示螢幕</p>

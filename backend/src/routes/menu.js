@@ -6,6 +6,14 @@ const HttpError = require('../utils/HttpError');
 const { authenticate, authorize, optionalAuth } = require('../middleware/auth');
 const { getCurrentPrice } = require('../utils/pricing');
 const { getSystemSettings } = require('../services/settingsService');
+const {
+  normalizeString,
+  optionalString,
+  parseNonNegativeInteger,
+  parseNonNegativeNumber,
+  parsePositiveInteger,
+  requireString
+} = require('../utils/validation');
 
 const router = express.Router();
 
@@ -32,6 +40,73 @@ function mapMenuItem(item) {
 
 function normalizeComboConfig(config) {
   return Array.isArray(config) ? config : [];
+}
+
+function normalizeExternalCode(value) {
+  const normalized = normalizeString(value);
+  return normalized || null;
+}
+
+function sanitizeItemPayload(payload) {
+  return {
+    name: requireString(payload.name, '品項名稱', { maxLength: 80 }),
+    externalCode: payload.externalCode !== undefined ? normalizeExternalCode(payload.externalCode) : undefined,
+    categoryId: parsePositiveInteger(payload.categoryId, '分類編號', { min: 1, max: 999999 }),
+    basePrice: parseNonNegativeNumber(payload.basePrice, '售價'),
+    cost: parseNonNegativeNumber(payload.cost || 0, '成本'),
+    stock: parseNonNegativeInteger(payload.stock || 0, '庫存'),
+    stockAlert: parseNonNegativeInteger(payload.stockAlert || 5, '庫存警戒值'),
+    isActive: payload.isActive ?? true,
+    isCombo: payload.isCombo ?? false,
+    timePricing: payload.timePricing || [],
+    comboConfig: payload.comboConfig || [],
+    emoji: optionalString(payload.emoji, { maxLength: 8 }),
+    description: optionalString(payload.description, { maxLength: 280 }),
+    imageUrl: optionalString(payload.imageUrl, { maxLength: 500 })
+  };
+}
+
+async function findExistingMenuItem(tx, itemInput, categoryId) {
+  const externalCode = normalizeExternalCode(itemInput.externalCode);
+
+  if (externalCode) {
+    const byExternalCode = await tx.menuItem.findUnique({
+      where: {
+        externalCode
+      }
+    });
+
+    if (byExternalCode) {
+      return byExternalCode;
+    }
+  }
+
+  return tx.menuItem.findFirst({
+    where: {
+      name: itemInput.name,
+      categoryId
+    }
+  });
+}
+
+function assertImportPayload(items) {
+  const seenExternalCodes = new Set();
+
+  items.forEach((item) => {
+    const name = normalizeString(item.name);
+    if (!name) {
+      throw new HttpError(400, '匯入品項缺少名稱');
+    }
+
+    const externalCode = normalizeExternalCode(item.externalCode);
+    if (externalCode) {
+      if (seenExternalCodes.has(externalCode)) {
+        throw new HttpError(400, `匯入資料中的 externalCode 重複：${externalCode}`);
+      }
+
+      seenExternalCodes.add(externalCode);
+    }
+  });
 }
 
 function buildComboGroups(item, menuItemMap) {
@@ -70,14 +145,17 @@ function isComboItemAvailable(item, menuItemMap) {
 async function upsertCategory(tx, categoryInput) {
   const existing = await tx.category.findFirst({
     where: {
-      name: categoryInput.name
+      name: requireString(categoryInput.name, '分類名稱', { maxLength: 60 })
     }
   });
+
+  const name = requireString(categoryInput.name, '分類名稱', { maxLength: 60 });
 
   if (existing) {
     return tx.category.update({
       where: { id: existing.id },
       data: {
+        name,
         sortOrder: Number(categoryInput.sortOrder || 0),
         isActive: categoryInput.isActive ?? true
       }
@@ -86,7 +164,7 @@ async function upsertCategory(tx, categoryInput) {
 
   return tx.category.create({
     data: {
-      name: categoryInput.name,
+      name,
       sortOrder: Number(categoryInput.sortOrder || 0),
       isActive: categoryInput.isActive ?? true
     }
@@ -94,9 +172,10 @@ async function upsertCategory(tx, categoryInput) {
 }
 
 async function upsertAddOnGroup(tx, groupInput) {
+  const name = requireString(groupInput.name, '加料群組名稱', { maxLength: 60 });
   const existing = await tx.addOnGroup.findFirst({
     where: {
-      name: groupInput.name
+      name
     }
   });
 
@@ -110,12 +189,13 @@ async function upsertAddOnGroup(tx, groupInput) {
     return tx.addOnGroup.update({
       where: { id: existing.id },
       data: {
+        name,
         required: groupInput.required ?? false,
         maxSelect: Number(groupInput.maxSelect || 1),
         options: {
           create: (groupInput.options || []).map((option) => ({
-            name: option.name,
-            price: Number(option.price || 0)
+            name: requireString(option.name, '加料選項名稱', { maxLength: 60 }),
+            price: parseNonNegativeNumber(option.price || 0, '加料價格')
           }))
         }
       },
@@ -127,13 +207,13 @@ async function upsertAddOnGroup(tx, groupInput) {
 
   return tx.addOnGroup.create({
     data: {
-      name: groupInput.name,
+      name,
       required: groupInput.required ?? false,
       maxSelect: Number(groupInput.maxSelect || 1),
       options: {
         create: (groupInput.options || []).map((option) => ({
-          name: option.name,
-          price: Number(option.price || 0)
+          name: requireString(option.name, '加料選項名稱', { maxLength: 60 }),
+          price: parseNonNegativeNumber(option.price || 0, '加料價格')
         }))
       }
     },
@@ -168,7 +248,7 @@ router.get('/categories', optionalAuth, asyncHandler(async (_req, res) => {
 router.post('/categories', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const category = await prisma.category.create({
     data: {
-      name: req.body.name,
+      name: requireString(req.body.name, '分類名稱', { maxLength: 60 }),
       sortOrder: Number(req.body.sortOrder || 0),
       isActive: req.body.isActive ?? true
     }
@@ -186,7 +266,7 @@ router.put('/categories/:id', authenticate, authorize('OWNER', 'MANAGER'), async
       id: Number(req.params.id)
     },
     data: {
-      ...(req.body.name !== undefined ? { name: req.body.name } : {}),
+      ...(req.body.name !== undefined ? { name: requireString(req.body.name, '分類名稱', { maxLength: 60 }) } : {}),
       ...(req.body.sortOrder !== undefined ? { sortOrder: Number(req.body.sortOrder) } : {}),
       ...(req.body.isActive !== undefined ? { isActive: Boolean(req.body.isActive) } : {})
     }
@@ -270,6 +350,8 @@ router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler
     throw new HttpError(400, '匯入資料至少需要 categories 與 items');
   }
 
+  assertImportPayload(items);
+
   const result = await prisma.$transaction(async (tx) => {
     if (replaceAll) {
       await tx.menuItem.updateMany({
@@ -305,26 +387,21 @@ router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler
         throw new HttpError(400, `找不到品項分類：${itemInput.categoryName || itemInput.category}`);
       }
 
-      const existingItem = await tx.menuItem.findFirst({
-        where: {
-          name: itemInput.name,
-          categoryId: category.id
-        }
-      });
+      const existingItem = await findExistingMenuItem(tx, itemInput, category.id);
 
       const itemData = {
-        name: itemInput.name,
-        externalCode: itemInput.externalCode || null,
+        name: requireString(itemInput.name, '品項名稱', { maxLength: 80 }),
+        externalCode: normalizeExternalCode(itemInput.externalCode),
         categoryId: category.id,
-        basePrice: Number(itemInput.basePrice || 0),
-        cost: Number(itemInput.cost || 0),
-        stock: Number(itemInput.stock || 0),
-        stockAlert: Number(itemInput.stockAlert || 5),
+        basePrice: parseNonNegativeNumber(itemInput.basePrice || 0, '售價'),
+        cost: parseNonNegativeNumber(itemInput.cost || 0, '成本'),
+        stock: parseNonNegativeInteger(itemInput.stock || 0, '庫存'),
+        stockAlert: parseNonNegativeInteger(itemInput.stockAlert || 5, '庫存警戒值'),
         isActive: itemInput.isActive ?? true,
         isCombo: itemInput.isCombo ?? false,
-        emoji: itemInput.emoji || null,
-        description: itemInput.description || null,
-        imageUrl: itemInput.imageUrl || null,
+        emoji: optionalString(itemInput.emoji, { maxLength: 8 }),
+        description: optionalString(itemInput.description, { maxLength: 280 }),
+        imageUrl: optionalString(itemInput.imageUrl, { maxLength: 500 }),
         timePricing: itemInput.timePricing || [],
         comboConfig: itemInput.comboConfig || []
       };
@@ -414,23 +491,11 @@ router.get('/items', optionalAuth, asyncHandler(async (req, res) => {
 
 router.post('/items', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const { addOnGroupIds = [], ...payload } = req.body;
+  const itemPayload = sanitizeItemPayload(payload);
 
   const item = await prisma.menuItem.create({
     data: {
-      name: payload.name,
-      externalCode: payload.externalCode || null,
-      categoryId: Number(payload.categoryId),
-      basePrice: Number(payload.basePrice),
-      cost: Number(payload.cost || 0),
-      stock: Number(payload.stock || 0),
-      stockAlert: Number(payload.stockAlert || 5),
-      isActive: payload.isActive ?? true,
-      isCombo: payload.isCombo ?? false,
-      timePricing: payload.timePricing || [],
-      comboConfig: payload.comboConfig || [],
-      emoji: payload.emoji || null,
-      description: payload.description || null,
-      imageUrl: payload.imageUrl || null,
+      ...itemPayload,
       menuItemAddOns: {
         create: addOnGroupIds.map((groupId) => ({
           addOnGroupId: Number(groupId)
@@ -461,20 +526,20 @@ router.put('/items/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHandl
   const item = await prisma.menuItem.update({
     where: { id },
     data: {
-      ...(payload.name !== undefined ? { name: payload.name } : {}),
-      ...(payload.externalCode !== undefined ? { externalCode: payload.externalCode || null } : {}),
+      ...(payload.name !== undefined ? { name: requireString(payload.name, '品項名稱', { maxLength: 80 }) } : {}),
+      ...(payload.externalCode !== undefined ? { externalCode: normalizeExternalCode(payload.externalCode) } : {}),
       ...(payload.categoryId !== undefined ? { categoryId: Number(payload.categoryId) } : {}),
-      ...(payload.basePrice !== undefined ? { basePrice: Number(payload.basePrice) } : {}),
-      ...(payload.cost !== undefined ? { cost: Number(payload.cost) } : {}),
-      ...(payload.stock !== undefined ? { stock: Number(payload.stock) } : {}),
-      ...(payload.stockAlert !== undefined ? { stockAlert: Number(payload.stockAlert) } : {}),
+      ...(payload.basePrice !== undefined ? { basePrice: parseNonNegativeNumber(payload.basePrice, '售價') } : {}),
+      ...(payload.cost !== undefined ? { cost: parseNonNegativeNumber(payload.cost, '成本') } : {}),
+      ...(payload.stock !== undefined ? { stock: parseNonNegativeInteger(payload.stock, '庫存') } : {}),
+      ...(payload.stockAlert !== undefined ? { stockAlert: parseNonNegativeInteger(payload.stockAlert, '庫存警戒值') } : {}),
       ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
       ...(payload.isCombo !== undefined ? { isCombo: Boolean(payload.isCombo) } : {}),
       ...(payload.timePricing !== undefined ? { timePricing: payload.timePricing } : {}),
       ...(payload.comboConfig !== undefined ? { comboConfig: payload.comboConfig } : {}),
-      ...(payload.emoji !== undefined ? { emoji: payload.emoji } : {}),
-      ...(payload.description !== undefined ? { description: payload.description } : {}),
-      ...(payload.imageUrl !== undefined ? { imageUrl: payload.imageUrl } : {}),
+      ...(payload.emoji !== undefined ? { emoji: optionalString(payload.emoji, { maxLength: 8 }) } : {}),
+      ...(payload.description !== undefined ? { description: optionalString(payload.description, { maxLength: 280 }) } : {}),
+      ...(payload.imageUrl !== undefined ? { imageUrl: optionalString(payload.imageUrl, { maxLength: 500 }) } : {}),
       ...(Array.isArray(addOnGroupIds)
         ? {
             menuItemAddOns: {
@@ -525,13 +590,13 @@ router.get('/addons', optionalAuth, asyncHandler(async (_req, res) => {
 router.post('/addons', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(async (req, res) => {
   const group = await prisma.addOnGroup.create({
     data: {
-      name: req.body.name,
+      name: requireString(req.body.name, '加料群組名稱', { maxLength: 60 }),
       required: req.body.required ?? false,
       maxSelect: Number(req.body.maxSelect || 1),
       options: {
         create: (req.body.options || []).map((option) => ({
-          name: option.name,
-          price: Number(option.price || 0)
+          name: requireString(option.name, '加料選項名稱', { maxLength: 60 }),
+          price: parseNonNegativeNumber(option.price || 0, '加料價格')
         }))
       }
     },
@@ -557,13 +622,13 @@ router.put('/addons/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHand
   const group = await prisma.addOnGroup.update({
     where: { id },
     data: {
-      name: req.body.name,
+      name: requireString(req.body.name, '加料群組名稱', { maxLength: 60 }),
       required: req.body.required ?? false,
       maxSelect: Number(req.body.maxSelect || 1),
       options: {
         create: (req.body.options || []).map((option) => ({
-          name: option.name,
-          price: Number(option.price || 0)
+          name: requireString(option.name, '加料選項名稱', { maxLength: 60 }),
+          price: parseNonNegativeNumber(option.price || 0, '加料價格')
         }))
       }
     },
@@ -590,11 +655,7 @@ router.delete('/addons/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncH
 }));
 
 router.patch('/items/:id/stock', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
-  const stock = Number(req.body.stock);
-
-  if (Number.isNaN(stock)) {
-    throw new HttpError(400, '請提供正確庫存數量');
-  }
+  const stock = parseNonNegativeInteger(req.body.stock, '庫存數量');
 
   const item = await prisma.menuItem.update({
     where: { id: Number(req.params.id) },

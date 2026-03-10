@@ -8,6 +8,7 @@ const { normalizeFoodpandaWebhook, normalizeUberEatsWebhook } = require('../serv
 const { createOrder } = require('../services/orderService');
 
 const router = express.Router();
+const DELIVERY_STATUSES = ['RECEIVED', 'ACCEPTED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
 
 function verifyWebhook(secret, req) {
   if (!secret) {
@@ -23,6 +24,31 @@ function verifyWebhook(secret, req) {
 router.post('/foodpanda', asyncHandler(async (req, res) => {
   verifyWebhook(process.env.FOODPANDA_WEBHOOK_SECRET, req);
   const payload = normalizeFoodpandaWebhook(req.body);
+  const existing = await prisma.deliveryOrder.findFirst({
+    where: {
+      platform: 'FOODPANDA',
+      externalId: payload.deliveryMeta.externalId
+    },
+    include: {
+      order: {
+        include: {
+          items: {
+            include: {
+              menuItem: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (existing) {
+    return res.json({
+      success: true,
+      data: existing.order
+    });
+  }
+
   const order = await createOrder(payload, null);
   res.status(201).json({
     success: true,
@@ -33,6 +59,31 @@ router.post('/foodpanda', asyncHandler(async (req, res) => {
 router.post('/ubereats', asyncHandler(async (req, res) => {
   verifyWebhook(process.env.UBEREATS_WEBHOOK_SECRET, req);
   const payload = normalizeUberEatsWebhook(req.body);
+  const existing = await prisma.deliveryOrder.findFirst({
+    where: {
+      platform: 'UBEREATS',
+      externalId: payload.deliveryMeta.externalId
+    },
+    include: {
+      order: {
+        include: {
+          items: {
+            include: {
+              menuItem: true
+            }
+          }
+        }
+      }
+    }
+  });
+
+  if (existing) {
+    return res.json({
+      success: true,
+      data: existing.order
+    });
+  }
+
   const order = await createOrder(payload, null);
   res.status(201).json({
     success: true,
@@ -66,6 +117,11 @@ router.get('/orders', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyn
 
 router.patch('/orders/:id/status', authenticate, authorize('OWNER', 'MANAGER', 'STAFF'), asyncHandler(async (req, res) => {
   const status = String(req.body.status || '').toUpperCase();
+
+  if (!DELIVERY_STATUSES.includes(status)) {
+    throw new HttpError(400, '不支援的外送訂單狀態');
+  }
+
   const deliveryOrder = await prisma.deliveryOrder.update({
     where: {
       id: Number(req.params.id)

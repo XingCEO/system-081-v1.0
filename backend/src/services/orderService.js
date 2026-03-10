@@ -1,8 +1,17 @@
+const dayjs = require('dayjs');
+
 const prisma = require('../lib/prisma');
 const HttpError = require('../utils/HttpError');
 const { generateOrderNumber } = require('../utils/order');
 const { calculatePoints, getCurrentPrice } = require('../utils/pricing');
 const { getSystemSettings } = require('./settingsService');
+const {
+  normalizePhone,
+  optionalString,
+  parseNonNegativeInteger,
+  parseNonNegativeNumber,
+  parsePositiveInteger
+} = require('../utils/validation');
 const {
   notifyNewOrder,
   notifyPickupReminder,
@@ -30,12 +39,27 @@ const ORDER_INCLUDE = {
   }
 };
 
+const ORDER_STATUS_TRANSITIONS = {
+  PENDING: ['PREPARING', 'READY', 'COMPLETED', 'CANCELLED'],
+  PREPARING: ['READY', 'CANCELLED'],
+  READY: ['COMPLETED', 'CANCELLED'],
+  COMPLETED: [],
+  CANCELLED: []
+};
+
 function normalizePaymentMethod(method) {
   if (!method) {
     return null;
   }
 
-  return String(method).toUpperCase();
+  const normalized = String(method).toUpperCase();
+  const allowed = ['CASH', 'CARD', 'LINE_PAY', 'TRANSFER', 'OTHER'];
+
+  if (!allowed.includes(normalized)) {
+    throw new HttpError(400, '不支援的付款方式');
+  }
+
+  return normalized;
 }
 
 function buildNameKey(name) {
@@ -60,6 +84,115 @@ function normalizeAddons(rawItem) {
 
 function normalizeComboSelections(rawItem) {
   return Array.isArray(rawItem.comboSelections) ? rawItem.comboSelections : [];
+}
+
+function sanitizeTrustedAddons(rawAddons) {
+  return rawAddons.map((addon) => {
+    const name = String(addon.name || '').trim();
+
+    if (!name) {
+      throw new HttpError(400, '加料名稱不可為空');
+    }
+
+    return {
+      kind: 'addon',
+      id: addon.id ? Number(addon.id) : undefined,
+      groupId: addon.groupId ? Number(addon.groupId) : undefined,
+      groupName: addon.groupName || null,
+      name,
+      price: parseNonNegativeNumber(addon.price ?? addon.priceAdjust ?? 0, '加料金額')
+    };
+  });
+}
+
+function resolveAddonMatch(groups, rawAddon) {
+  const rawGroupId = rawAddon.groupId ? Number(rawAddon.groupId) : null;
+  const rawOptionId = rawAddon.id ? Number(rawAddon.id) : rawAddon.optionId ? Number(rawAddon.optionId) : null;
+  const rawName = String(rawAddon.name || '').trim().toLowerCase();
+
+  for (const group of groups) {
+    if (rawGroupId && group.id !== rawGroupId) {
+      continue;
+    }
+
+    const option = group.options.find((entry) => {
+      if (rawOptionId && entry.id === rawOptionId) {
+        return true;
+      }
+
+      return rawName && entry.name.trim().toLowerCase() === rawName;
+    });
+
+    if (option) {
+      return { group, option };
+    }
+  }
+
+  return null;
+}
+
+function validateAndBuildAddons(menuItem, rawAddons, options = {}) {
+  if (options.trustSubmittedPrices) {
+    return sanitizeTrustedAddons(Array.isArray(rawAddons) ? rawAddons : []);
+  }
+
+  if (!Array.isArray(rawAddons) || rawAddons.length === 0) {
+    const requiredGroup = (menuItem.menuItemAddOns || [])
+      .map((entry) => entry.addOnGroup)
+      .find((group) => group.required);
+
+    if (requiredGroup) {
+      throw new HttpError(400, `品項「${menuItem.name}」缺少必選加料群組「${requiredGroup.name}」`);
+    }
+
+    return [];
+  }
+
+  const groups = (menuItem.menuItemAddOns || []).map((entry) => entry.addOnGroup);
+  const selectionsByGroup = new Map(groups.map((group) => [group.id, []]));
+  const normalizedAddons = [];
+
+  rawAddons.forEach((rawAddon) => {
+    const matched = resolveAddonMatch(groups, rawAddon);
+
+    if (!matched) {
+      throw new HttpError(400, `品項「${menuItem.name}」包含無效加料選項`);
+    }
+
+    const selectedOptions = selectionsByGroup.get(matched.group.id);
+    if (selectedOptions.includes(matched.option.id)) {
+      throw new HttpError(400, `加料選項「${matched.option.name}」不可重複選擇`);
+    }
+
+    selectedOptions.push(matched.option.id);
+
+    if (selectedOptions.length > Number(matched.group.maxSelect || 1)) {
+      throw new HttpError(400, `加料群組「${matched.group.name}」超過可選上限`);
+    }
+
+    normalizedAddons.push({
+      kind: 'addon',
+      id: matched.option.id,
+      groupId: matched.group.id,
+      groupName: matched.group.name,
+      name: matched.option.name,
+      price: Number(matched.option.price || 0)
+    });
+  });
+
+  groups.forEach((group) => {
+    if (group.required && (selectionsByGroup.get(group.id) || []).length === 0) {
+      throw new HttpError(400, `品項「${menuItem.name}」缺少必選加料群組「${group.name}」`);
+    }
+  });
+
+  return normalizedAddons;
+}
+
+function validateSubmittedStatus(status) {
+  if (!ORDER_STATUS_TRANSITIONS[status]) {
+    throw new HttpError(400, '不支援的訂單狀態');
+  }
 }
 
 async function resolveTable(tx, payload) {
@@ -94,7 +227,7 @@ async function resolveMember(tx, payload) {
   if (payload.memberPhone) {
     return tx.member.findUnique({
       where: {
-        phone: payload.memberPhone
+        phone: normalizePhone(payload.memberPhone)
       }
     });
   }
@@ -222,7 +355,7 @@ function validateAndBuildComboSelections(menuItem, rawSelections, menuItemLookup
   return comboSelections;
 }
 
-async function prepareOrderItems(tx, rawItems) {
+async function prepareOrderItems(tx, rawItems, options = {}) {
   if (!Array.isArray(rawItems) || rawItems.length === 0) {
     throw new HttpError(400, '訂單至少需要一筆餐點');
   }
@@ -238,6 +371,17 @@ async function prepareOrderItems(tx, rawItems) {
         externalCodes.length > 0 ? { externalCode: { in: externalCodes } } : undefined,
         menuItemNames.length > 0 ? { name: { in: menuItemNames } } : undefined
       ].filter(Boolean)
+    },
+    include: {
+      menuItemAddOns: {
+        include: {
+          addOnGroup: {
+            include: {
+              options: true
+            }
+          }
+        }
+      }
     }
   });
 
@@ -259,7 +403,7 @@ async function prepareOrderItems(tx, rawItems) {
 
   rawItems.forEach((rawItem) => {
     const menuItem = resolveOrderedMenuItem(rawItem, lookup);
-    const quantity = Number(rawItem.quantity || 1);
+    const quantity = parsePositiveInteger(rawItem.quantity || 1, '餐點數量', { min: 1, max: 99 });
 
     if (!menuItem || !menuItem.isActive) {
       throw new HttpError(400, `找不到可販售品項：${rawItem.menuItemId || rawItem.externalCode || rawItem.menuItemName || rawItem.name}`);
@@ -269,11 +413,7 @@ async function prepareOrderItems(tx, rawItems) {
       reserveStock(stockReservations, menuItem, quantity);
     }
 
-    const addons = normalizeAddons(rawItem).map((addon) => ({
-      ...addon,
-      kind: addon.kind || 'addon',
-      price: Number(addon.price ?? addon.priceAdjust ?? 0)
-    }));
+    const addons = validateAndBuildAddons(menuItem, normalizeAddons(rawItem), options);
 
     const comboSelections = menuItem.isCombo
       ? validateAndBuildComboSelections(menuItem, normalizeComboSelections(rawItem), lookup, stockReservations, quantity)
@@ -289,7 +429,7 @@ async function prepareOrderItems(tx, rawItems) {
       quantity,
       unitPrice,
       addons: [...comboSelections, ...addons],
-      note: rawItem.note || null
+      note: optionalString(rawItem.note, { maxLength: 120 })
     });
   });
 
@@ -362,25 +502,46 @@ async function applyMemberPointChanges(tx, member, orderId, total, redeemPoints,
 
 async function createOrder(payload, actor) {
   const { orderingState, pointsRule } = await getSystemSettings();
+  const orderType = String(payload.type || 'TAKEOUT').toUpperCase();
+  const allowedOrderTypes = ['DINE_IN', 'TAKEOUT', 'DELIVERY', 'PHONE'];
+
+  if (!allowedOrderTypes.includes(orderType)) {
+    throw new HttpError(400, '不支援的訂單類型');
+  }
 
   if (orderingState?.paused && !payload.ignorePause) {
     throw new HttpError(423, '目前暫停接單，請稍後再試');
   }
 
-  const redeemPoints = Number(payload.redeemPoints || 0);
-  const discount = Number(payload.discount ?? payload.discountAmount ?? 0);
+  const redeemPoints = parseNonNegativeInteger(payload.redeemPoints || 0, '折抵點數', { max: 999999 });
+  const requestedDiscount = parseNonNegativeNumber(payload.discount ?? payload.discountAmount ?? 0, '折扣金額');
+  const canApplyManualDiscount = Boolean(actor);
+  const discount = canApplyManualDiscount ? requestedDiscount : 0;
 
   const result = await prisma.$transaction(async (tx) => {
     const member = await resolveMember(tx, payload);
     const table = await resolveTable(tx, payload);
-    const { subtotal, itemRecords, stockSnapshots } = await prepareOrderItems(tx, payload.items);
+    const { subtotal, itemRecords, stockSnapshots } = await prepareOrderItems(tx, payload.items, {
+      trustSubmittedPrices: Boolean(payload.trustSubmittedPrices)
+    });
     const redeemValue = redeemPoints * Number(pointsRule.redeemRate || 1);
     const total = Math.max(0, subtotal - discount - redeemValue);
     const paymentMethod = normalizePaymentMethod(payload.paymentMethod);
-    const receivedAmount = Number(payload.receivedAmount || total || 0);
+    const receivedAmountInput = parseNonNegativeNumber(payload.receivedAmount || 0, '實收金額');
+    const receivedAmount = paymentMethod && paymentMethod !== 'CASH'
+      ? Math.max(total, receivedAmountInput)
+      : receivedAmountInput;
     const changeAmount = paymentMethod === 'CASH'
       ? Math.max(0, receivedAmount - total)
       : 0;
+
+    if (orderType === 'DINE_IN' && !table) {
+      throw new HttpError(400, '內用訂單請選擇桌號');
+    }
+
+    if (paymentMethod === 'CASH' && receivedAmount < total) {
+      throw new HttpError(400, '現金實收金額不足');
+    }
 
     let order;
 
@@ -411,7 +572,8 @@ async function createOrder(payload, actor) {
             subtotal: existing.subtotal + subtotal,
             total: existing.total + total,
             discount: existing.discount + discount + redeemValue,
-            note: [existing.note, payload.note].filter(Boolean).join(' / ') || null
+            memberId: existing.memberId || member?.id || null,
+            note: [existing.note, optionalString(payload.note, { maxLength: 300 })].filter(Boolean).join(' / ') || null
           },
           include: ORDER_INCLUDE
         });
@@ -422,7 +584,7 @@ async function createOrder(payload, actor) {
       order = await tx.order.create({
         data: {
           orderNumber: await generateOrderNumber(tx),
-          type: payload.type || 'TAKEOUT',
+          type: orderType,
           status: payload.status || 'PENDING',
           tableId: table?.id,
           staffId: actor?.id || null,
@@ -430,7 +592,7 @@ async function createOrder(payload, actor) {
           subtotal,
           total,
           paymentMethod,
-          note: payload.note || null,
+          note: optionalString(payload.note, { maxLength: 300 }),
           source: payload.source || 'pos',
           discount: discount + redeemValue,
           receivedAmount,
@@ -458,7 +620,7 @@ async function createOrder(payload, actor) {
       await applyMemberPointChanges(tx, member, order.id, total, redeemPoints, pointsRule);
     }
 
-    if (table && payload.type === 'DINE_IN') {
+    if (table && orderType === 'DINE_IN') {
       await tx.table.update({
         where: { id: table.id },
         data: { status: 'OCCUPIED' }
@@ -574,6 +736,8 @@ async function restoreCancelledOrderStock(tx, order) {
 }
 
 async function updateOrderStatus(orderId, status) {
+  validateSubmittedStatus(status);
+
   const result = await prisma.$transaction(async (tx) => {
     const currentOrder = await tx.order.findUnique({
       where: { id: Number(orderId) },
@@ -582,6 +746,14 @@ async function updateOrderStatus(orderId, status) {
 
     if (!currentOrder) {
       throw new HttpError(404, '找不到訂單');
+    }
+
+    if (currentOrder.status === status) {
+      return currentOrder;
+    }
+
+    if (!ORDER_STATUS_TRANSITIONS[currentOrder.status].includes(status)) {
+      throw new HttpError(409, `訂單狀態無法由 ${currentOrder.status} 變更為 ${status}`);
     }
 
     const updated = await tx.order.update({
@@ -621,6 +793,18 @@ async function updateOrderStatus(orderId, status) {
     }
 
     if (status === 'COMPLETED' && updated.tableId) {
+      await tx.orderItem.updateMany({
+        where: {
+          orderId: updated.id,
+          status: {
+            in: ['PENDING', 'PREPARING', 'READY']
+          }
+        },
+        data: {
+          status: 'SERVED'
+        }
+      });
+
       await tx.table.update({
         where: {
           id: updated.tableId
@@ -632,6 +816,15 @@ async function updateOrderStatus(orderId, status) {
     }
 
     if (status === 'CANCELLED') {
+      await tx.orderItem.updateMany({
+        where: {
+          orderId: updated.id
+        },
+        data: {
+          status: 'CANCELLED'
+        }
+      });
+
       await restoreCancelledOrderStock(tx, currentOrder);
 
       if (updated.tableId) {
@@ -712,10 +905,18 @@ async function listOrders(filters = {}) {
   if (filters.dateFrom || filters.dateTo) {
     where.createdAt = {};
     if (filters.dateFrom) {
-      where.createdAt.gte = new Date(filters.dateFrom);
+      if (!dayjs(filters.dateFrom).isValid()) {
+        throw new HttpError(400, 'dateFrom 格式不正確');
+      }
+
+      where.createdAt.gte = dayjs(filters.dateFrom).startOf('day').toDate();
     }
     if (filters.dateTo) {
-      where.createdAt.lte = new Date(filters.dateTo);
+      if (!dayjs(filters.dateTo).isValid()) {
+        throw new HttpError(400, 'dateTo 格式不正確');
+      }
+
+      where.createdAt.lte = dayjs(filters.dateTo).endOf('day').toDate();
     }
   }
 

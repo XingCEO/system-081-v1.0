@@ -2,13 +2,28 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dayjs = require('dayjs');
+const rateLimit = require('express-rate-limit');
 
 const prisma = require('../lib/prisma');
 const asyncHandler = require('../utils/asyncHandler');
 const HttpError = require('../utils/HttpError');
 const { authenticate } = require('../middleware/auth');
+const { normalizeString, requireString } = require('../utils/validation');
 
 const router = express.Router();
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true,
+  handler: (_req, res) => {
+    res.status(429).json({
+      success: false,
+      message: '登入嘗試過於頻繁，請 15 分鐘後再試'
+    });
+  }
+});
 
 function sanitizeUser(user) {
   return {
@@ -46,6 +61,14 @@ function signRefreshToken(user) {
 }
 
 async function issueTokens(user) {
+  await prisma.refreshToken.deleteMany({
+    where: {
+      expiresAt: {
+        lt: new Date()
+      }
+    }
+  });
+
   const accessToken = signAccessToken(user);
   const refreshToken = signRefreshToken(user);
 
@@ -63,10 +86,11 @@ async function issueTokens(user) {
   };
 }
 
-router.post('/login', asyncHandler(async (req, res) => {
-  const { name, password } = req.body;
+router.post('/login', authLimiter, asyncHandler(async (req, res) => {
+  const name = requireString(req.body.name, '帳號', { maxLength: 60 });
+  const password = normalizeString(req.body.password);
 
-  if (!name || !password) {
+  if (!password) {
     throw new HttpError(400, '請輸入帳號與密碼');
   }
 
@@ -96,10 +120,10 @@ router.post('/login', asyncHandler(async (req, res) => {
   });
 }));
 
-router.post('/pin', asyncHandler(async (req, res) => {
-  const { pin } = req.body;
+router.post('/pin', authLimiter, asyncHandler(async (req, res) => {
+  const pin = normalizeString(req.body.pin);
 
-  if (!pin) {
+  if (!pin || pin.length < 4 || pin.length > 12) {
     throw new HttpError(400, '請輸入 PIN 碼');
   }
 
@@ -164,6 +188,32 @@ router.post('/refresh', asyncHandler(async (req, res) => {
     data: {
       user: sanitizeUser(tokenRecord.user),
       ...tokens
+    }
+  });
+}));
+
+router.post('/logout', authenticate, asyncHandler(async (req, res) => {
+  const { refreshToken, allDevices = false } = req.body || {};
+
+  if (allDevices) {
+    await prisma.refreshToken.deleteMany({
+      where: {
+        userId: req.user.id
+      }
+    });
+  } else if (refreshToken) {
+    await prisma.refreshToken.deleteMany({
+      where: {
+        token: refreshToken,
+        userId: req.user.id
+      }
+    });
+  }
+
+  res.json({
+    success: true,
+    data: {
+      loggedOut: true
     }
   });
 }));
