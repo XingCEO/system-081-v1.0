@@ -1,0 +1,4 @@
+-- Legacy placeholder migration.
+-- This folder existed in the repository without a SQL file.
+-- It is intentionally left as a no-op so Prisma migrate can continue
+-- and the actual baseline schema is created by the following migration.

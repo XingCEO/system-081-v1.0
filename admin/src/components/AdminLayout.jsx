@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   BarChart3,
+  Bell,
   ClipboardList,
   LayoutDashboard,
   LogOut,
@@ -16,10 +17,11 @@ const navigation = [
   { to: '/', label: '儀表板', icon: LayoutDashboard, end: true },
   { to: '/menu', label: '菜單管理', icon: ShoppingBag },
   { to: '/orders', label: '訂單管理', icon: ClipboardList },
-  { to: '/reports', label: '營運報表', icon: BarChart3 },
+  { to: '/reports', label: '報表分析', icon: BarChart3 },
   { to: '/members', label: '會員管理', icon: Users },
   { to: '/staff', label: '員工管理', icon: Users },
   { to: '/tables', label: '桌位與預約', icon: TableProperties },
+  { to: '/notifications', label: '通知中心', icon: Bell },
   { to: '/settings', label: '系統設定', icon: Settings }
 ];
 
@@ -74,11 +76,11 @@ export default function AdminLayout() {
         <main className="space-y-4">
           <header className="admin-panel flex flex-wrap items-center justify-between gap-4 px-5 py-4">
             <div>
-              <p className="text-sm font-semibold text-brand-600">營運中心</p>
-              <h2 className="text-2xl font-black text-slate-900">早餐店 POS 專業管理後台</h2>
+              <p className="text-sm font-semibold text-brand-600">營運管理中心</p>
+              <h2 className="text-2xl font-black text-slate-900">早餐店 POS 後台總覽</h2>
             </div>
             <div className="rounded-full bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700">
-              可管理菜單、訂單、報表、桌位、會員與系統設定
+              可管理菜單、訂單、會員、報表、桌位與系統設定
             </div>
           </header>
           <Outlet />

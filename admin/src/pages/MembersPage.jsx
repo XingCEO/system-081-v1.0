@@ -49,17 +49,19 @@ export default function MembersPage() {
       if (!form.id) {
         setForm(defaultForm());
       }
-    }
+    },
+    onError: (error) => toast.error(error.message || '會員資料儲存失敗')
   });
 
   const pointMutation = useMutation({
     mutationFn: (payload) => api.post(`/members/${selectedMemberId}/points`, payload),
     onSuccess: () => {
-      toast.success('點數異動完成');
+      toast.success('點數調整完成');
       setPointForm({ points: 0, type: 'ADJUST', note: '' });
       queryClient.invalidateQueries({ queryKey: ['admin-member-detail', selectedMemberId] });
       queryClient.invalidateQueries({ queryKey: ['admin-members'] });
-    }
+    },
+    onError: (error) => toast.error(error.message || '點數調整失敗')
   });
 
   const members = membersQuery.data || [];
@@ -71,11 +73,20 @@ export default function MembersPage() {
         <article className="admin-panel p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-bold text-slate-900">{form.id ? '編輯會員' : '新增會員'}</h2>
-            <button type="button" className="admin-ghost" onClick={() => { setSelectedMemberId(null); setForm(defaultForm()); }}>清空表單</button>
+            <button
+              type="button"
+              className="admin-ghost"
+              onClick={() => {
+                setSelectedMemberId(null);
+                setForm(defaultForm());
+              }}
+            >
+              清空表單
+            </button>
           </div>
           <div className="mt-4 grid gap-3">
             <input className="admin-field" placeholder="姓名" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-            <input className="admin-field" placeholder="手機" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
+            <input className="admin-field" placeholder="手機號碼" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} />
             <input className="admin-field" type="date" value={form.birthday} onChange={(event) => setForm((current) => ({ ...current, birthday: event.target.value }))} />
             <label className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
               <input checked={form.isBlacklisted} onChange={(event) => setForm((current) => ({ ...current, isBlacklisted: event.target.checked }))} type="checkbox" /> 加入黑名單
@@ -88,7 +99,12 @@ export default function MembersPage() {
           <h2 className="text-xl font-bold text-slate-900">會員列表</h2>
           <div className="mt-4 space-y-3">
             {members.map((member) => (
-              <button key={member.id} type="button" className="w-full rounded-2xl bg-slate-50 p-4 text-left transition hover:bg-brand-50" onClick={() => setSelectedMemberId(member.id)}>
+              <button
+                key={member.id}
+                type="button"
+                className="w-full rounded-2xl bg-slate-50 p-4 text-left transition hover:bg-brand-50"
+                onClick={() => setSelectedMemberId(member.id)}
+              >
                 <div className="font-bold text-slate-900">{member.name}</div>
                 <div className="mt-1 text-sm text-slate-500">{member.phone}</div>
                 <div className="mt-2 text-sm font-semibold text-brand-700">{member.points} 點 / NT${member.totalSpent}</div>
@@ -101,7 +117,7 @@ export default function MembersPage() {
       <article className="admin-panel p-5">
         <h2 className="text-xl font-bold text-slate-900">會員詳情</h2>
         {!detail ? (
-          <div className="mt-5 admin-soft p-5 text-sm text-slate-500">請先從左側選擇會員，右側會顯示消費紀錄與點數異動。</div>
+          <div className="mt-5 admin-soft p-5 text-sm text-slate-500">請從左側選擇會員，以查看消費紀錄與點數異動。</div>
         ) : (
           <div className="mt-5 grid gap-4 xl:grid-cols-[0.7fr_1.3fr]">
             <section className="space-y-4">
@@ -109,20 +125,20 @@ export default function MembersPage() {
                 <div className="font-bold text-slate-900">{detail.name}</div>
                 <div className="mt-1 text-sm text-slate-500">{detail.phone}</div>
                 <div className="mt-3 text-sm font-semibold text-brand-700">{detail.points} 點 / NT${detail.totalSpent}</div>
-                <div className="mt-2 text-sm text-slate-500">{detail.isBlacklisted ? '黑名單會員' : '一般會員'}</div>
+                <div className="mt-2 text-sm text-slate-500">{detail.isBlacklisted ? '黑名單會員' : '正常會員'}</div>
               </div>
 
               <div className="admin-soft p-4">
                 <h3 className="font-bold text-slate-900">手動調整點數</h3>
                 <div className="mt-3 grid gap-3">
                   <select className="admin-field" value={pointForm.type} onChange={(event) => setPointForm((current) => ({ ...current, type: event.target.value }))}>
-                    <option value="ADJUST">調整</option>
+                    <option value="ADJUST">手動調整</option>
                     <option value="EARN">補點</option>
                     <option value="REDEEM">扣點</option>
                   </select>
                   <input className="admin-field" type="number" value={pointForm.points} onChange={(event) => setPointForm((current) => ({ ...current, points: Number(event.target.value || 0) }))} />
                   <textarea className="admin-field min-h-24 resize-none" placeholder="備註" value={pointForm.note} onChange={(event) => setPointForm((current) => ({ ...current, note: event.target.value }))} />
-                  <button type="button" className="admin-button" onClick={() => pointMutation.mutate(pointForm)}>送出點數異動</button>
+                  <button type="button" className="admin-button" onClick={() => pointMutation.mutate(pointForm)}>送出點數調整</button>
                 </div>
               </div>
             </section>
@@ -139,6 +155,7 @@ export default function MembersPage() {
                   ))}
                 </div>
               </div>
+
               <div className="admin-soft p-4">
                 <h3 className="font-bold text-slate-900">點數紀錄</h3>
                 <div className="mt-3 space-y-3">

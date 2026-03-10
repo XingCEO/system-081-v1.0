@@ -34,7 +34,8 @@ export default function TablesPage() {
       toast.success('桌位資料已儲存');
       setTableForm(defaultTableForm());
       queryClient.invalidateQueries({ queryKey: ['admin-tables'] });
-    }
+    },
+    onError: (error) => toast.error(error.message || '桌位資料儲存失敗')
   });
 
   const saveReservationMutation = useMutation({
@@ -46,7 +47,8 @@ export default function TablesPage() {
       setReservationForm(defaultReservationForm());
       queryClient.invalidateQueries({ queryKey: ['admin-reservations'] });
       queryClient.invalidateQueries({ queryKey: ['admin-tables'] });
-    }
+    },
+    onError: (error) => toast.error(error.message || '預約資料儲存失敗')
   });
 
   const tables = tablesQuery.data || [];
@@ -76,7 +78,7 @@ export default function TablesPage() {
         </article>
 
         <article className="admin-panel p-5">
-          <h2 className="text-xl font-bold text-slate-900">桌位與預約設定</h2>
+          <h2 className="text-xl font-bold text-slate-900">桌位 / 預約設定</h2>
           <div className="mt-4 grid gap-6">
             <div className="rounded-2xl border border-slate-100 p-4">
               <div className="text-sm font-semibold text-slate-700">桌位資料</div>
@@ -124,16 +126,21 @@ export default function TablesPage() {
         <h2 className="text-xl font-bold text-slate-900">預約列表</h2>
         <div className="mt-5 space-y-3">
           {reservations.map((reservation) => (
-            <button key={reservation.id} type="button" className="w-full rounded-2xl bg-slate-50 p-4 text-left transition hover:bg-brand-50" onClick={() => setReservationForm({
-              id: reservation.id,
-              tableId: reservation.tableId,
-              memberName: reservation.memberName,
-              phone: reservation.phone,
-              partySize: reservation.partySize,
-              datetime: reservation.datetime.slice(0, 16),
-              note: reservation.note || '',
-              status: reservation.status
-            })}>
+            <button
+              key={reservation.id}
+              type="button"
+              className="w-full rounded-2xl bg-slate-50 p-4 text-left transition hover:bg-brand-50"
+              onClick={() => setReservationForm({
+                id: reservation.id,
+                tableId: reservation.tableId,
+                memberName: reservation.memberName,
+                phone: reservation.phone,
+                partySize: reservation.partySize,
+                datetime: reservation.datetime.slice(0, 16),
+                note: reservation.note || '',
+                status: reservation.status
+              })}
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="font-bold text-slate-900">{reservation.memberName} / {reservation.table.number} 號桌</div>

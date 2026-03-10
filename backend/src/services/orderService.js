@@ -38,6 +38,30 @@ function normalizePaymentMethod(method) {
   return String(method).toUpperCase();
 }
 
+function buildNameKey(name) {
+  return String(name || '').trim().toLowerCase();
+}
+
+function normalizeComboGroups(config) {
+  return Array.isArray(config) ? config : [];
+}
+
+function normalizeAddons(rawItem) {
+  if (Array.isArray(rawItem.addons)) {
+    return rawItem.addons;
+  }
+
+  if (Array.isArray(rawItem.options)) {
+    return rawItem.options;
+  }
+
+  return [];
+}
+
+function normalizeComboSelections(rawItem) {
+  return Array.isArray(rawItem.comboSelections) ? rawItem.comboSelections : [];
+}
+
 async function resolveTable(tx, payload) {
   if (payload.tableId) {
     return tx.table.findUnique({
@@ -78,70 +102,201 @@ async function resolveMember(tx, payload) {
   return null;
 }
 
-async function prepareOrderItems(tx, rawItems) {
-  if (!Array.isArray(rawItems) || rawItems.length === 0) {
-    throw new HttpError(400, '訂單至少需要一個品項');
+function buildLookup(menuItems) {
+  return {
+    byId: new Map(menuItems.map((item) => [item.id, item])),
+    byExternalCode: new Map(menuItems.filter((item) => item.externalCode).map((item) => [item.externalCode, item])),
+    byName: new Map(menuItems.map((item) => [buildNameKey(item.name), item]))
+  };
+}
+
+function resolveOrderedMenuItem(rawItem, lookup) {
+  if (rawItem.menuItemId && lookup.byId.has(Number(rawItem.menuItemId))) {
+    return lookup.byId.get(Number(rawItem.menuItemId));
   }
 
-  const menuItemIds = [...new Set(rawItems.map((item) => Number(item.menuItemId)))];
+  if (rawItem.externalCode && lookup.byExternalCode.has(String(rawItem.externalCode))) {
+    return lookup.byExternalCode.get(String(rawItem.externalCode));
+  }
+
+  if (rawItem.menuItemName && lookup.byName.has(buildNameKey(rawItem.menuItemName))) {
+    return lookup.byName.get(buildNameKey(rawItem.menuItemName));
+  }
+
+  if (rawItem.name && lookup.byName.has(buildNameKey(rawItem.name))) {
+    return lookup.byName.get(buildNameKey(rawItem.name));
+  }
+
+  return null;
+}
+
+function reserveStock(stockReservations, menuItem, quantity) {
+  const reserved = stockReservations.get(menuItem.id) || 0;
+  const remaining = menuItem.stock - reserved - quantity;
+
+  if (remaining < 0) {
+    throw new HttpError(400, `${menuItem.name} 庫存不足，目前剩餘 ${Math.max(0, menuItem.stock - reserved)} 份`);
+  }
+
+  stockReservations.set(menuItem.id, reserved + quantity);
+}
+
+function buildStockSnapshots(stockReservations, menuItemMap) {
+  return [...stockReservations.entries()].map(([id, reserved]) => {
+    const item = menuItemMap.get(id);
+    return {
+      id,
+      name: item.name,
+      stockAlert: item.stockAlert,
+      newStock: item.stock - reserved
+    };
+  });
+}
+
+function extractComboOptionIds(menuItems) {
+  return [...new Set(
+    menuItems
+      .flatMap((item) => normalizeComboGroups(item.comboConfig))
+      .flatMap((group) => group.options || [])
+      .map((option) => Number(option.menuItemId))
+      .filter(Boolean)
+  )];
+}
+
+function resolveComboSelection(group, rawSelection, menuItemLookup) {
+  const matchedOption = (group.options || []).find((option) => {
+    if (rawSelection.menuItemId && Number(option.menuItemId) === Number(rawSelection.menuItemId)) {
+      return true;
+    }
+
+    if (rawSelection.externalCode && String(option.externalCode || '') === String(rawSelection.externalCode)) {
+      return true;
+    }
+
+    return buildNameKey(option.name) === buildNameKey(rawSelection.name);
+  });
+
+  if (!matchedOption) {
+    throw new HttpError(400, `套餐群組「${group.name}」的選項無效`);
+  }
+
+  const targetItem = menuItemLookup.byId.get(Number(matchedOption.menuItemId));
+  if (!targetItem || !targetItem.isActive) {
+    throw new HttpError(400, `套餐選項「${matchedOption.name || matchedOption.menuItemId}」目前無法供應`);
+  }
+
+  return {
+    kind: 'combo',
+    groupName: group.name,
+    menuItemId: targetItem.id,
+    name: matchedOption.name || targetItem.name,
+    emoji: matchedOption.emoji || targetItem.emoji || null,
+    price: Number(matchedOption.priceAdjust || matchedOption.price || 0)
+  };
+}
+
+function validateAndBuildComboSelections(menuItem, rawSelections, menuItemLookup, stockReservations, quantity) {
+  const comboGroups = normalizeComboGroups(menuItem.comboConfig);
+  const comboSelections = [];
+
+  comboGroups.forEach((group) => {
+    const groupSelections = rawSelections.filter((selection) => buildNameKey(selection.groupName) === buildNameKey(group.name));
+    const maxSelect = Number(group.maxSelect || 1);
+
+    if (group.required && groupSelections.length === 0) {
+      throw new HttpError(400, `套餐「${menuItem.name}」缺少必選群組「${group.name}」`);
+    }
+
+    if (groupSelections.length > maxSelect) {
+      throw new HttpError(400, `套餐群組「${group.name}」超過可選上限`);
+    }
+
+    groupSelections.forEach((selection) => {
+      const resolved = resolveComboSelection(group, selection, menuItemLookup);
+      const selectedItem = menuItemLookup.byId.get(resolved.menuItemId);
+      reserveStock(stockReservations, selectedItem, quantity);
+      comboSelections.push(resolved);
+    });
+  });
+
+  return comboSelections;
+}
+
+async function prepareOrderItems(tx, rawItems) {
+  if (!Array.isArray(rawItems) || rawItems.length === 0) {
+    throw new HttpError(400, '訂單至少需要一筆餐點');
+  }
+
+  const menuItemIds = [...new Set(rawItems.map((item) => Number(item.menuItemId)).filter(Boolean))];
+  const externalCodes = [...new Set(rawItems.map((item) => item.externalCode).filter(Boolean))];
+  const menuItemNames = [...new Set(rawItems.map((item) => item.menuItemName || item.name).filter(Boolean))];
+
   const menuItems = await tx.menuItem.findMany({
     where: {
-      id: {
-        in: menuItemIds
-      }
+      OR: [
+        menuItemIds.length > 0 ? { id: { in: menuItemIds } } : undefined,
+        externalCodes.length > 0 ? { externalCode: { in: externalCodes } } : undefined,
+        menuItemNames.length > 0 ? { name: { in: menuItemNames } } : undefined
+      ].filter(Boolean)
     }
   });
 
-  const menuItemMap = new Map(menuItems.map((item) => [item.id, item]));
+  const comboOptionIds = extractComboOptionIds(menuItems);
+  const comboOptionItems = comboOptionIds.length > 0
+    ? await tx.menuItem.findMany({
+        where: {
+          id: { in: comboOptionIds }
+        }
+      })
+    : [];
+
+  const allMenuItems = [...menuItems, ...comboOptionItems];
+  const lookup = buildLookup(allMenuItems);
+  const stockReservations = new Map();
+
   let subtotal = 0;
   const itemRecords = [];
-  const stockSnapshots = [];
 
   rawItems.forEach((rawItem) => {
-    const menuItem = menuItemMap.get(Number(rawItem.menuItemId));
+    const menuItem = resolveOrderedMenuItem(rawItem, lookup);
     const quantity = Number(rawItem.quantity || 1);
 
     if (!menuItem || !menuItem.isActive) {
-      throw new HttpError(400, `找不到可點餐品項：${rawItem.menuItemId}`);
+      throw new HttpError(400, `找不到可販售品項：${rawItem.menuItemId || rawItem.externalCode || rawItem.menuItemName || rawItem.name}`);
     }
 
-    if (menuItem.stock < quantity) {
-      throw new HttpError(400, `${menuItem.name} 庫存不足，目前剩餘 ${menuItem.stock} 份`);
+    if (!menuItem.isCombo) {
+      reserveStock(stockReservations, menuItem, quantity);
     }
 
-    const addons = Array.isArray(rawItem.addons)
-      ? rawItem.addons
-      : Array.isArray(rawItem.options)
-        ? rawItem.options
-        : [];
+    const addons = normalizeAddons(rawItem).map((addon) => ({
+      ...addon,
+      kind: addon.kind || 'addon',
+      price: Number(addon.price ?? addon.priceAdjust ?? 0)
+    }));
 
-    const addonsTotal = addons.reduce((sum, addon) => {
-      return sum + Number(addon.price ?? addon.priceAdjust ?? 0);
-    }, 0);
+    const comboSelections = menuItem.isCombo
+      ? validateAndBuildComboSelections(menuItem, normalizeComboSelections(rawItem), lookup, stockReservations, quantity)
+      : [];
 
-    const unitPrice = getCurrentPrice(menuItem) + addonsTotal;
+    const addonsTotal = addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+    const comboAdjustTotal = comboSelections.reduce((sum, selection) => sum + Number(selection.price || 0), 0);
+    const unitPrice = getCurrentPrice(menuItem) + addonsTotal + comboAdjustTotal;
     subtotal += unitPrice * quantity;
 
     itemRecords.push({
       menuItemId: menuItem.id,
       quantity,
       unitPrice,
-      addons,
+      addons: [...comboSelections, ...addons],
       note: rawItem.note || null
-    });
-
-    stockSnapshots.push({
-      id: menuItem.id,
-      name: menuItem.name,
-      stockAlert: menuItem.stockAlert,
-      newStock: menuItem.stock - quantity
     });
   });
 
   return {
     subtotal,
     itemRecords,
-    stockSnapshots
+    stockSnapshots: buildStockSnapshots(stockReservations, lookup.byId)
   };
 }
 
@@ -151,7 +306,7 @@ async function applyMemberPointChanges(tx, member, orderId, total, redeemPoints,
   }
 
   if (member.isBlacklisted) {
-    throw new HttpError(403, '此會員已被列為黑名單，無法使用會員功能');
+    throw new HttpError(403, '此會員已被列入黑名單，無法使用點數或會員優惠');
   }
 
   const rewardPoints = calculatePoints(total, pointsRule);
@@ -169,7 +324,7 @@ async function applyMemberPointChanges(tx, member, orderId, total, redeemPoints,
       orderId,
       points: redeemPoints,
       type: 'REDEEM',
-      note: '訂單折抵'
+      note: '訂單點數折抵'
     });
   }
 
@@ -180,7 +335,7 @@ async function applyMemberPointChanges(tx, member, orderId, total, redeemPoints,
       orderId,
       points: rewardPoints,
       type: 'EARN',
-      note: '訂單累點'
+      note: '訂單消費回饋'
     });
   }
 
@@ -209,7 +364,7 @@ async function createOrder(payload, actor) {
   const { orderingState, pointsRule } = await getSystemSettings();
 
   if (orderingState?.paused && !payload.ignorePause) {
-    throw new HttpError(423, '目前暫停點餐中，請稍後再試');
+    throw new HttpError(423, '目前暫停接單，請稍後再試');
   }
 
   const redeemPoints = Number(payload.redeemPoints || 0);
@@ -392,6 +547,32 @@ async function listKdsOrders() {
   });
 }
 
+async function restoreCancelledOrderStock(tx, order) {
+  const restored = new Map();
+
+  order.items.forEach((item) => {
+    restored.set(item.menuItemId, (restored.get(item.menuItemId) || 0) + item.quantity);
+
+    const modifiers = Array.isArray(item.addons) ? item.addons : [];
+    modifiers
+      .filter((modifier) => modifier.kind === 'combo' && modifier.menuItemId)
+      .forEach((modifier) => {
+        restored.set(Number(modifier.menuItemId), (restored.get(Number(modifier.menuItemId)) || 0) + item.quantity);
+      });
+  });
+
+  for (const [menuItemId, quantity] of restored.entries()) {
+    await tx.menuItem.update({
+      where: { id: Number(menuItemId) },
+      data: {
+        stock: {
+          increment: quantity
+        }
+      }
+    });
+  }
+}
+
 async function updateOrderStatus(orderId, status) {
   const result = await prisma.$transaction(async (tx) => {
     const currentOrder = await tx.order.findUnique({
@@ -451,18 +632,7 @@ async function updateOrderStatus(orderId, status) {
     }
 
     if (status === 'CANCELLED') {
-      for (const item of currentOrder.items) {
-        await tx.menuItem.update({
-          where: {
-            id: item.menuItemId
-          },
-          data: {
-            stock: {
-              increment: item.quantity
-            }
-          }
-        });
-      }
+      await restoreCancelledOrderStock(tx, currentOrder);
 
       if (updated.tableId) {
         await tx.table.update({

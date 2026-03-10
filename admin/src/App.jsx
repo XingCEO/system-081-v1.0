@@ -9,13 +9,16 @@ import ReportsPage from './pages/ReportsPage';
 import MembersPage from './pages/MembersPage';
 import StaffPage from './pages/StaffPage';
 import TablesPage from './pages/TablesPage';
+import NotificationsPage from './pages/NotificationsPage';
 import SettingsPage from './pages/SettingsPage';
 
 function ProtectedRoute({ children }) {
   const accessToken = useAdminAuthStore((state) => state.accessToken);
+
   if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
+
   return children;
 }
 
@@ -38,6 +41,7 @@ export default function App() {
         <Route path="members" element={<MembersPage />} />
         <Route path="staff" element={<StaffPage />} />
         <Route path="tables" element={<TablesPage />} />
+        <Route path="notifications" element={<NotificationsPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
     </Routes>

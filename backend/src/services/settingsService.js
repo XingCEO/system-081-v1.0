@@ -1,7 +1,10 @@
 const prisma = require('../lib/prisma');
 
 async function getSetting(key, fallback = null) {
-  const record = await prisma.setting.findUnique({ where: { key } });
+  const record = await prisma.setting.findUnique({
+    where: { key }
+  });
+
   return record ? record.value : fallback;
 }
 

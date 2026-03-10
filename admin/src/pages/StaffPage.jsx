@@ -38,7 +38,8 @@ export default function StaffPage() {
       toast.success('員工資料已儲存');
       queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
       setForm(defaultForm());
-    }
+    },
+    onError: (error) => toast.error(error.message || '員工資料儲存失敗')
   });
 
   const clockMutation = useMutation({
@@ -46,7 +47,8 @@ export default function StaffPage() {
     onSuccess: () => {
       toast.success('打卡完成');
       queryClient.invalidateQueries({ queryKey: ['admin-staff-attendance', selectedStaffId] });
-    }
+    },
+    onError: (error) => toast.error(error.message || '打卡失敗')
   });
 
   const staff = staffQuery.data || [];
@@ -61,7 +63,7 @@ export default function StaffPage() {
             <button type="button" className="admin-ghost" onClick={() => setForm(defaultForm())}>清空表單</button>
           </div>
           <div className="mt-4 grid gap-3">
-            <input className="admin-field" placeholder="員工名稱" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+            <input className="admin-field" placeholder="員工姓名" value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
             <select className="admin-field" value={form.role} onChange={(event) => setForm((current) => ({ ...current, role: event.target.value }))}>
               <option value="OWNER">OWNER</option>
               <option value="MANAGER">MANAGER</option>
@@ -88,7 +90,7 @@ export default function StaffPage() {
 
       <article className="admin-panel p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-bold text-slate-900">打卡記錄</h2>
+          <h2 className="text-xl font-bold text-slate-900">打卡紀錄</h2>
           {selectedStaffId && (
             <div className="flex gap-3">
               <button type="button" className="admin-ghost" onClick={() => clockMutation.mutate({ id: selectedStaffId, action: 'clock-in' })}>上班打卡</button>
@@ -100,11 +102,11 @@ export default function StaffPage() {
           {attendance.map((entry) => (
             <div key={entry.id} className="rounded-2xl bg-slate-50 p-4 text-sm">
               <div className="font-semibold text-slate-900">上班：{new Date(entry.clockIn).toLocaleString('zh-TW')}</div>
-              <div className="mt-1 text-slate-500">下班：{entry.clockOut ? new Date(entry.clockOut).toLocaleString('zh-TW') : '尚未打卡'}</div>
+              <div className="mt-1 text-slate-500">下班：{entry.clockOut ? new Date(entry.clockOut).toLocaleString('zh-TW') : '尚未打卡下班'}</div>
             </div>
           ))}
           {selectedStaffId && attendance.length === 0 && (
-            <div className="admin-soft p-4 text-sm text-slate-500">目前沒有打卡資料。</div>
+            <div className="admin-soft p-4 text-sm text-slate-500">目前沒有打卡紀錄。</div>
           )}
         </div>
       </article>

@@ -85,6 +85,7 @@ async function loadOrders(rangeInput) {
 function buildSummary(orders) {
   const totalRevenue = orders.reduce((sum, order) => sum + order.total, 0);
   const totalOrders = orders.length;
+
   return {
     totalOrders,
     totalRevenue,
@@ -220,28 +221,28 @@ async function getMonthlyReport(month) {
 async function exportReportAsExcel(range) {
   const daily = await getDailyReport(range?.split(',')[0]);
   const workbook = new ExcelJS.Workbook();
-  const summarySheet = workbook.addWorksheet('摘要');
-  const itemSheet = workbook.addWorksheet('熱銷商品');
-  const hourSheet = workbook.addWorksheet('高峰時段');
+  const summarySheet = workbook.addWorksheet('Summary');
+  const itemSheet = workbook.addWorksheet('Top Items');
+  const hourSheet = workbook.addWorksheet('Peak Hours');
 
   summarySheet.addRows([
-    ['報表區間', daily.range.label],
-    ['訂單數', daily.summary.totalOrders],
-    ['營業額', daily.summary.totalRevenue],
-    ['平均客單價', Number(daily.summary.averageOrderValue.toFixed(2))]
+    ['Report Range', daily.range.label],
+    ['Total Orders', daily.summary.totalOrders],
+    ['Total Revenue', daily.summary.totalRevenue],
+    ['Average Order Value', Number(daily.summary.averageOrderValue.toFixed(2))]
   ]);
 
   itemSheet.columns = [
-    { header: '商品名稱', key: 'name', width: 24 },
-    { header: '銷量', key: 'quantity', width: 12 },
-    { header: '營收', key: 'revenue', width: 16 }
+    { header: 'Item Name', key: 'name', width: 24 },
+    { header: 'Quantity', key: 'quantity', width: 12 },
+    { header: 'Revenue', key: 'revenue', width: 16 }
   ];
   itemSheet.addRows(daily.topItems);
 
   hourSheet.columns = [
-    { header: '小時', key: 'hour', width: 10 },
-    { header: '訂單數', key: 'orders', width: 12 },
-    { header: '營收', key: 'revenue', width: 16 }
+    { header: 'Hour', key: 'hour', width: 10 },
+    { header: 'Orders', key: 'orders', width: 12 },
+    { header: 'Revenue', key: 'revenue', width: 16 }
   ];
   hourSheet.addRows(daily.peakHours);
 
@@ -258,17 +259,17 @@ async function exportReportAsPdf(range) {
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    doc.fontSize(18).text('早餐店 POS 日報表');
+    doc.fontSize(18).text('Breakfast POS Daily Report');
     doc.moveDown();
-    doc.fontSize(11).text(`報表區間：${daily.range.label}`);
-    doc.text(`訂單數：${daily.summary.totalOrders}`);
-    doc.text(`營業額：NT$${daily.summary.totalRevenue.toFixed(0)}`);
-    doc.text(`平均客單價：NT$${daily.summary.averageOrderValue.toFixed(0)}`);
+    doc.fontSize(11).text(`Range: ${daily.range.label}`);
+    doc.text(`Total Orders: ${daily.summary.totalOrders}`);
+    doc.text(`Total Revenue: NT$${daily.summary.totalRevenue.toFixed(0)}`);
+    doc.text(`Average Order Value: NT$${daily.summary.averageOrderValue.toFixed(0)}`);
     doc.moveDown();
-    doc.fontSize(14).text('熱銷商品 Top 10');
+    doc.fontSize(14).text('Top 10 Items');
     doc.moveDown(0.5);
     daily.topItems.forEach((item, index) => {
-      doc.fontSize(11).text(`${index + 1}. ${item.name} / ${item.quantity} 份 / NT$${item.revenue.toFixed(0)}`);
+      doc.fontSize(11).text(`${index + 1}. ${item.name} / ${item.quantity} items / NT$${item.revenue.toFixed(0)}`);
     });
     doc.end();
   });

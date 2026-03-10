@@ -1,5 +1,15 @@
 const HttpError = require('../utils/HttpError');
 
+function normalizeExternalCode(item = {}) {
+  return item.localMenuItemId
+    || item.menuItemId
+    || item.externalCode
+    || item.sku
+    || item.code
+    || item.id
+    || null;
+}
+
 function normalizeFoodpandaWebhook(payload) {
   if (!payload) {
     throw new HttpError(400, 'foodpanda webhook payload 不可為空');
@@ -11,7 +21,9 @@ function normalizeFoodpandaWebhook(payload) {
     note: payload.note || payload.remark || '',
     memberPhone: payload.customer?.phone || '',
     items: (payload.items || []).map((item) => ({
-      menuItemId: Number(item.localMenuItemId || item.menuItemId),
+      menuItemId: item.localMenuItemId ? Number(item.localMenuItemId) : undefined,
+      externalCode: normalizeExternalCode(item),
+      menuItemName: item.name || item.title || '',
       quantity: Number(item.quantity || 1),
       addons: (item.options || []).map((option) => ({
         name: option.name,
@@ -39,7 +51,9 @@ function normalizeUberEatsWebhook(payload) {
     note: payload.note || payload.specialInstructions || '',
     memberPhone: payload.eater?.phone || '',
     items: (payload.items || []).map((item) => ({
-      menuItemId: Number(item.localMenuItemId || item.menuItemId),
+      menuItemId: item.localMenuItemId ? Number(item.localMenuItemId) : undefined,
+      externalCode: normalizeExternalCode(item),
+      menuItemName: item.name || item.title || '',
       quantity: Number(item.quantity || 1),
       addons: (item.selectedModifiers || []).map((option) => ({
         name: option.name,

@@ -29,9 +29,9 @@ export default function DashboardPage() {
   return (
     <div className="space-y-4">
       <section className="grid gap-4 md:grid-cols-3">
-        <MetricCard label="今日訂單數" value={dashboard.totalOrders} hint="已完成與進行中的有效訂單" />
-        <MetricCard label="今日營業額" value={`NT$${dashboard.totalRevenue.toFixed(0)}`} hint="已扣除取消訂單後的總收入" />
-        <MetricCard label="平均客單價" value={`NT$${dashboard.averageOrderValue.toFixed(0)}`} hint="每筆訂單平均金額" />
+        <MetricCard label="今日訂單數" value={dashboard.totalOrders} hint="今天累計建立的訂單筆數" />
+        <MetricCard label="今日營業額" value={`NT$${dashboard.totalRevenue.toFixed(0)}`} hint="已排除取消訂單後的營收" />
+        <MetricCard label="平均客單價" value={`NT$${dashboard.averageOrderValue.toFixed(0)}`} hint="今日訂單平均金額" />
       </section>
 
       <section className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
@@ -56,11 +56,11 @@ export default function DashboardPage() {
             {dashboard.lowStockItems.map((item) => (
               <div key={item.id} className="rounded-2xl bg-amber-50 px-4 py-3">
                 <div className="font-semibold text-slate-900">{item.name}</div>
-                <div className="mt-1 text-sm text-amber-700">剩餘 {item.stock} / 警戒值 {item.stockAlert}</div>
+                <div className="mt-1 text-sm text-amber-700">目前庫存 {item.stock} / 警戒值 {item.stockAlert}</div>
               </div>
             ))}
             {dashboard.lowStockItems.length === 0 && (
-              <div className="admin-soft p-4 text-sm text-slate-500">目前沒有低庫存品項。</div>
+              <div className="admin-soft p-4 text-sm text-slate-500">目前沒有低於警戒值的商品。</div>
             )}
           </div>
         </article>

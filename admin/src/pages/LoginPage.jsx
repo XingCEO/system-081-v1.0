@@ -11,6 +11,7 @@ export default function LoginPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+
     try {
       await login(form.name, form.password);
       toast.success('後台登入成功');
@@ -25,27 +26,27 @@ export default function LoginPage() {
       <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="admin-panel p-8 lg:p-10">
           <p className="text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">Admin Console</p>
-          <h1 className="mt-3 text-4xl font-black text-slate-900">早餐店營運管理中心</h1>
+          <h1 className="mt-3 text-4xl font-black text-slate-900">早餐店營運管理後台</h1>
           <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-            在這裡可以管理菜單、訂單、會員、桌位、報表與系統設定，適合店長與老闆日常營運使用。
+            這裡可查看營業數據、管理菜單與訂單、調整通知設定與維護會員資料。
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-3">
             {[
               {
                 icon: BarChart3,
-                title: '即時報表',
-                description: '快速掌握營業額、熱門商品、毛利與高峰時段。'
+                title: '營運數據',
+                description: '即時掌握今日營業額、熱門商品、尖峰時段與低庫存狀況。'
               },
               {
                 icon: Settings2,
-                title: '完整設定',
-                description: '可調整店家資料、列印機、點數規則與通知設定。'
+                title: '系統設定',
+                description: '可調整點數規則、LINE Notify、列印機與備份還原。'
               },
               {
                 icon: LockKeyhole,
-                title: '角色權限',
-                description: '依角色保護敏感功能，確保後台操作更安全。'
+                title: '權限管理',
+                description: '依角色控管後台功能，讓老闆、店長與員工各自使用合適權限。'
               }
             ].map(({ icon: Icon, title, description }) => (
               <div key={title} className="admin-soft p-5">
@@ -81,7 +82,7 @@ export default function LoginPage() {
             {loading ? '登入中...' : '登入後台'}
           </button>
           <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-7 text-slate-500">
-            測試帳號：`admin / admin123`
+            預設帳號：admin / admin123
           </div>
         </form>
       </div>

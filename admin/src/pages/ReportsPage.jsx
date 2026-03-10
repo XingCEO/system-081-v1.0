@@ -23,7 +23,7 @@ async function downloadReport(type, range) {
   });
 
   if (!response.ok) {
-    throw new Error('匯出失敗');
+    throw new Error('匯出報表失敗');
   }
 
   const blob = await response.blob();
@@ -63,8 +63,8 @@ export default function ReportsPage() {
 
   const exportMutation = useMutation({
     mutationFn: ({ type, range }) => downloadReport(type, range),
-    onSuccess: () => toast.success('報表已下載'),
-    onError: (error) => toast.error(error.message || '報表下載失敗')
+    onSuccess: () => toast.success('報表匯出完成'),
+    onError: (error) => toast.error(error.message || '報表匯出失敗')
   });
 
   const daily = dailyQuery.data;
@@ -105,7 +105,7 @@ export default function ReportsPage() {
 
       <section className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <article className="admin-panel p-5">
-          <h2 className="text-xl font-bold text-slate-900">月營業額趨勢</h2>
+          <h2 className="text-xl font-bold text-slate-900">本月營收走勢</h2>
           <div className="mt-5 h-80">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={monthly?.series || []}>

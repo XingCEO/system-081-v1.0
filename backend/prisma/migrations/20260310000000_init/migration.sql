@@ -60,13 +60,16 @@ CREATE TABLE "categories" (
 CREATE TABLE "menu_items" (
     "id" SERIAL NOT NULL,
     "name" TEXT NOT NULL,
+    "externalCode" TEXT,
     "categoryId" INTEGER NOT NULL,
     "basePrice" DOUBLE PRECISION NOT NULL,
     "cost" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "stock" INTEGER NOT NULL DEFAULT 0,
     "stockAlert" INTEGER NOT NULL DEFAULT 5,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "isCombo" BOOLEAN NOT NULL DEFAULT false,
     "timePricing" JSONB,
+    "comboConfig" JSONB,
     "emoji" TEXT,
     "description" TEXT,
     "imageUrl" TEXT,
@@ -265,6 +268,9 @@ CREATE TABLE "refresh_tokens" (
 
 -- CreateIndex
 CREATE UNIQUE INDEX "users_name_key" ON "users"("name");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "menu_items_externalCode_key" ON "menu_items"("externalCode");
 
 -- CreateIndex
 CREATE INDEX "menu_items_categoryId_idx" ON "menu_items"("categoryId");

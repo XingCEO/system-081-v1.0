@@ -30,6 +30,43 @@ function mapMenuItem(item) {
   };
 }
 
+function normalizeComboConfig(config) {
+  return Array.isArray(config) ? config : [];
+}
+
+function buildComboGroups(item, menuItemMap) {
+  return normalizeComboConfig(item.comboConfig).map((group) => ({
+    ...group,
+    options: (group.options || []).map((option) => {
+      const targetItem = menuItemMap.get(Number(option.menuItemId));
+      return {
+        ...option,
+        menuItemId: Number(option.menuItemId),
+        name: option.name || targetItem?.name || `品項 ${option.menuItemId}`,
+        emoji: option.emoji || targetItem?.emoji || null,
+        imageUrl: option.imageUrl || targetItem?.imageUrl || null,
+        available: Boolean(targetItem?.isActive && targetItem?.stock > 0),
+        stock: targetItem?.stock ?? 0
+      };
+    })
+  }));
+}
+
+function isComboItemAvailable(item, menuItemMap) {
+  if (!item.isCombo) {
+    return item.stock > 0;
+  }
+
+  const comboGroups = buildComboGroups(item, menuItemMap);
+  return comboGroups.every((group) => {
+    if (!group.required) {
+      return true;
+    }
+
+    return (group.options || []).some((option) => option.available);
+  });
+}
+
 async function upsertCategory(tx, categoryInput) {
   const existing = await tx.category.findFirst({
     where: {
@@ -203,16 +240,19 @@ router.get('/export', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(
       })),
       items: items.map((item) => ({
         name: item.name,
+        externalCode: item.externalCode,
         categoryName: item.category.name,
         basePrice: item.basePrice,
         cost: item.cost,
         stock: item.stock,
         stockAlert: item.stockAlert,
         isActive: item.isActive,
+        isCombo: item.isCombo,
         emoji: item.emoji,
         description: item.description,
         imageUrl: item.imageUrl,
         timePricing: item.timePricing || [],
+        comboConfig: item.comboConfig || [],
         addOnGroupNames: item.menuItemAddOns.map((entry) => entry.addOnGroup.name)
       }))
     }
@@ -274,16 +314,19 @@ router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler
 
       const itemData = {
         name: itemInput.name,
+        externalCode: itemInput.externalCode || null,
         categoryId: category.id,
         basePrice: Number(itemInput.basePrice || 0),
         cost: Number(itemInput.cost || 0),
         stock: Number(itemInput.stock || 0),
         stockAlert: Number(itemInput.stockAlert || 5),
         isActive: itemInput.isActive ?? true,
+        isCombo: itemInput.isCombo ?? false,
         emoji: itemInput.emoji || null,
         description: itemInput.description || null,
         imageUrl: itemInput.imageUrl || null,
-        timePricing: itemInput.timePricing || []
+        timePricing: itemInput.timePricing || [],
+        comboConfig: itemInput.comboConfig || []
       };
 
       const menuItem = existingItem
@@ -375,13 +418,16 @@ router.post('/items', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler(
   const item = await prisma.menuItem.create({
     data: {
       name: payload.name,
+      externalCode: payload.externalCode || null,
       categoryId: Number(payload.categoryId),
       basePrice: Number(payload.basePrice),
       cost: Number(payload.cost || 0),
       stock: Number(payload.stock || 0),
       stockAlert: Number(payload.stockAlert || 5),
       isActive: payload.isActive ?? true,
+      isCombo: payload.isCombo ?? false,
       timePricing: payload.timePricing || [],
+      comboConfig: payload.comboConfig || [],
       emoji: payload.emoji || null,
       description: payload.description || null,
       imageUrl: payload.imageUrl || null,
@@ -416,13 +462,16 @@ router.put('/items/:id', authenticate, authorize('OWNER', 'MANAGER'), asyncHandl
     where: { id },
     data: {
       ...(payload.name !== undefined ? { name: payload.name } : {}),
+      ...(payload.externalCode !== undefined ? { externalCode: payload.externalCode || null } : {}),
       ...(payload.categoryId !== undefined ? { categoryId: Number(payload.categoryId) } : {}),
       ...(payload.basePrice !== undefined ? { basePrice: Number(payload.basePrice) } : {}),
       ...(payload.cost !== undefined ? { cost: Number(payload.cost) } : {}),
       ...(payload.stock !== undefined ? { stock: Number(payload.stock) } : {}),
       ...(payload.stockAlert !== undefined ? { stockAlert: Number(payload.stockAlert) } : {}),
       ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+      ...(payload.isCombo !== undefined ? { isCombo: Boolean(payload.isCombo) } : {}),
       ...(payload.timePricing !== undefined ? { timePricing: payload.timePricing } : {}),
+      ...(payload.comboConfig !== undefined ? { comboConfig: payload.comboConfig } : {}),
       ...(payload.emoji !== undefined ? { emoji: payload.emoji } : {}),
       ...(payload.description !== undefined ? { description: payload.description } : {}),
       ...(payload.imageUrl !== undefined ? { imageUrl: payload.imageUrl } : {}),
@@ -559,21 +608,24 @@ router.patch('/items/:id/stock', authenticate, authorize('OWNER', 'MANAGER', 'ST
 }));
 
 router.get('/availability', optionalAuth, asyncHandler(async (_req, res) => {
-  const { orderingState } = await getSystemSettings();
+  const { orderingState, pointsRule } = await getSystemSettings();
   const items = await prisma.menuItem.findMany({
     where: {
       isActive: true
     },
-    include: MENU_ITEM_INCLUDE
+      include: MENU_ITEM_INCLUDE
   });
+  const menuItemMap = new Map(items.map((item) => [item.id, item]));
 
   res.json({
     success: true,
     data: {
       paused: Boolean(orderingState?.paused),
+      pointsRule,
       items: items.map((item) => ({
         ...mapMenuItem(item),
-        available: item.stock > 0 && !orderingState?.paused
+        comboGroups: item.isCombo ? buildComboGroups(item, menuItemMap) : [],
+        available: isComboItemAvailable(item, menuItemMap) && !orderingState?.paused
       }))
     }
   });

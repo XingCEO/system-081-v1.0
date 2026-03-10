@@ -53,7 +53,7 @@ export default function CallerPage() {
     <div className="page-shell min-h-screen px-6 py-6" onClick={() => { soundLockedRef.current = false; }}>
       <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[1fr_420px]">
         <section className="panel p-8">
-          <p className="pill text-base">叫號顯示屏</p>
+          <p className="pill text-base">叫號顯示螢幕</p>
           <h1 className="mt-5 text-5xl font-black text-slate-900 lg:text-6xl">最新叫號</h1>
           <div className="mt-10 rounded-[40px] border border-brand-100 bg-brand-50 p-12 text-center">
             <div className="text-sm font-semibold uppercase tracking-[0.5em] text-brand-600">Now Calling</div>
@@ -72,7 +72,7 @@ export default function CallerPage() {
                 </div>
               ))}
               {preparingOrders.length === 0 && (
-                <div className="soft-panel p-5 text-sm text-slate-500">目前沒有餐點製作中。</div>
+                <div className="soft-panel p-5 text-sm text-slate-500">目前沒有正在製作的訂單。</div>
               )}
             </div>
           </div>
@@ -87,7 +87,7 @@ export default function CallerPage() {
               </div>
             ))}
             {history.length === 0 && (
-              <div className="soft-panel p-5 text-sm text-slate-500">目前尚未有叫號記錄。</div>
+              <div className="soft-panel p-5 text-sm text-slate-500">目前尚未收到叫號通知。</div>
             )}
           </div>
         </aside>

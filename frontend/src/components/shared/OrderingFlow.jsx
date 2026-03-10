@@ -5,11 +5,20 @@ import { ArrowLeft, Clock3, Minus, Phone, Plus, Trash2 } from 'lucide-react';
 import api from '../../lib/api';
 import MenuCustomizerModal from './MenuCustomizerModal';
 
-function createCartItem(item, addons = [], note = '') {
-  const addonTotal = addons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+function formatCurrency(value) {
+  return `NT$${Number(value || 0).toFixed(0)}`;
+}
+
+function createCartItem(item, addons = [], note = '', comboSelections = []) {
+  const modifierTotal =
+    addons.reduce((sum, entry) => sum + Number(entry.price || 0), 0) +
+    comboSelections.reduce((sum, entry) => sum + Number(entry.price || 0), 0);
   const signature = JSON.stringify({
     menuItemId: item.id,
-    addons: addons.map((addon) => addon.name).sort(),
+    addons: addons.map((entry) => `${entry.id || entry.name}:${entry.price || 0}`).sort(),
+    comboSelections: comboSelections
+      .map((entry) => `${entry.groupName}:${entry.menuItemId || entry.name}:${entry.price || 0}`)
+      .sort(),
     note: note.trim()
   });
 
@@ -17,11 +26,14 @@ function createCartItem(item, addons = [], note = '') {
     id: `${item.id}-${Date.now()}-${Math.random()}`,
     signature,
     menuItemId: item.id,
+    externalCode: item.externalCode || null,
     name: item.name,
     emoji: item.emoji,
     quantity: 1,
-    unitPrice: Number(item.currentPrice ?? item.basePrice) + addonTotal,
+    unitPrice: Number(item.currentPrice ?? item.basePrice) + modifierTotal,
     addons,
+    comboSelections,
+    modifiers: [...comboSelections, ...addons],
     note: note.trim()
   };
 }
@@ -33,6 +45,17 @@ function EmptyState({ title, description }) {
       <p className="mt-2 text-sm leading-7 text-slate-500">{description}</p>
     </div>
   );
+}
+
+function calculateEarnPoints(total, pointsRule) {
+  const earnEvery = Number(pointsRule?.earnEvery || 30);
+  const earnPoints = Number(pointsRule?.earnPoints || 1);
+
+  if (earnEvery <= 0) {
+    return 0;
+  }
+
+  return Math.floor(Number(total || 0) / earnEvery) * earnPoints;
 }
 
 export default function OrderingFlow({ mode, tableNumber = '' }) {
@@ -64,9 +87,9 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     onSuccess: (data) => {
       setMember(data || null);
       if (data) {
-        toast.success(`已帶入會員 ${data.name}`);
+        toast.success(`已套用會員：${data.name}`);
       } else {
-        toast('查無此會員，可直接結帳不綁會員');
+        toast('查無會員資料，可直接結帳。');
       }
     },
     onError: (error) => {
@@ -85,16 +108,21 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
       setMemberPhone('');
       setStep('success');
       setCountdown(isQrMode ? 8 : 10);
-      toast.success('訂單已送出');
+      toast.success('訂單送出成功');
     },
     onError: (error) => {
-      toast.error(error.message || '送出訂單失敗');
+      toast.error(error.message || '建立訂單失敗');
     }
   });
 
   const categories = categoriesQuery.data || [];
-  const availability = availabilityQuery.data || { paused: false, items: [] };
+  const availability = availabilityQuery.data || {
+    paused: false,
+    pointsRule: { earnEvery: 30, earnPoints: 1, redeemRate: 1 },
+    items: []
+  };
   const items = availability.items || [];
+  const pointsRule = availability.pointsRule || { earnEvery: 30, earnPoints: 1, redeemRate: 1 };
 
   useEffect(() => {
     if (!selectedCategory && categories.length > 0) {
@@ -124,6 +152,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     }
 
     let timeoutId;
+
     const resetIdleTimer = () => {
       window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(() => {
@@ -158,11 +187,20 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     () => cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0),
     [cart]
   );
+  const redeemRate = Number(pointsRule.redeemRate || 1);
+  const maxRedeemPoints = useMemo(() => {
+    if (!member || redeemRate <= 0) {
+      return 0;
+    }
+
+    return Math.min(member.points, Math.floor(subtotal / redeemRate));
+  }, [member, redeemRate, subtotal]);
   const redeemPoints = useMemo(
-    () => (usePoints ? Math.min(member?.points || 0, subtotal) : 0),
-    [member?.points, subtotal, usePoints]
+    () => (usePoints ? maxRedeemPoints : 0),
+    [maxRedeemPoints, usePoints]
   );
-  const total = Math.max(0, subtotal - redeemPoints);
+  const total = Math.max(0, subtotal - (redeemPoints * redeemRate));
+  const earnPoints = calculateEarnPoints(total, pointsRule);
 
   const resetToStart = () => {
     setStep(isQrMode ? 'menu' : 'welcome');
@@ -175,10 +213,12 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
     setOrderNote('');
   };
 
-  const addToCart = (item, addons = [], note = '') => {
-    const nextItem = createCartItem(item, addons, note);
+  const addToCart = (item, addons = [], note = '', comboSelections = []) => {
+    const nextItem = createCartItem(item, addons, note, comboSelections);
+
     setCart((current) => {
       const existing = current.find((entry) => entry.signature === nextItem.signature);
+
       if (existing) {
         return current.map((entry) => (
           entry.signature === nextItem.signature
@@ -190,7 +230,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
       return [...current, nextItem];
     });
 
-    toast.success(`${item.name} 已加入`);
+    toast.success(`${item.name} 已加入購物車`);
   };
 
   const updateQuantity = (id, quantity) => {
@@ -204,7 +244,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
 
   const placeOrder = () => {
     if (cart.length === 0) {
-      toast.error('請先加入餐點');
+      toast.error('請先選擇餐點');
       return;
     }
 
@@ -222,6 +262,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
         menuItemId: item.menuItemId,
         quantity: item.quantity,
         addons: item.addons,
+        comboSelections: item.comboSelections,
         note: item.note || null
       }))
     });
@@ -236,13 +277,13 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
               <p className="pill">自助點餐 Kiosk</p>
               <h1 className="mt-5 text-4xl font-black text-slate-900 md:text-5xl">歡迎使用早餐店自助點餐</h1>
               <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
-                選擇內用或外帶後即可開始點餐。完成後會顯示訂單號碼，系統也會同步送單到廚房顯示器。
+                可選擇內用或外帶，支援加料、套餐搭配、會員累點與成功叫號流程。
               </p>
               <div className="mt-8 grid gap-4 md:grid-cols-3">
                 {[
-                  ['快速選餐', '商品依分類整理，適合觸控操作與高峰時段快速下單。'],
-                  ['即時送單', '建立訂單後會直接進入 KDS，內場不需要手動刷新。'],
-                  ['會員集點', '支援手機號碼查詢會員與點數折抵。']
+                  ['大字觸控操作', '適合平板與自助機使用，點餐流程清楚直覺。'],
+                  ['送單同步廚房', '送單後會立刻推送到 KDS，不需要重整畫面。'],
+                  ['會員累點折抵', '支援手機查詢會員與使用點數折抵。']
                 ].map(([title, description]) => (
                   <div key={title} className="soft-panel p-5">
                     <h2 className="text-lg font-bold text-slate-900">{title}</h2>
@@ -257,13 +298,13 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                 {
                   type: 'DINE_IN',
                   title: '內用點餐',
-                  description: '適合現場用餐顧客，取餐後可直接入座。',
+                  description: '適合現場入座客人，完成點餐後可等待餐點製作與叫號。',
                   emoji: '🍽️'
                 },
                 {
                   type: 'TAKEOUT',
                   title: '外帶點餐',
-                  description: '下單後顯示取餐號碼，完成後會同步叫號。',
+                  description: '快速建立外帶訂單，完成後顯示訂單號碼並等待叫號。',
                   emoji: '🥡'
                 }
               ].map((entry) => (
@@ -295,21 +336,21 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-brand-50 text-5xl text-brand-600">
             ✓
           </div>
-          <p className="mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">訂單送出成功</p>
+          <p className="mt-6 text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">訂單建立成功</p>
           <h1 className="mono mt-3 text-5xl font-black text-slate-900">{orderResult.orderNumber}</h1>
           <p className="mt-5 text-lg leading-8 text-slate-600">
             {isQrMode
-              ? `桌號 ${tableNumber} 已完成加點。若還要追加餐點，可直接回到點餐頁面繼續操作。`
-              : '請記下您的取餐號碼，餐點完成後會在叫號畫面顯示並播放提示音。'}
+              ? `桌號 ${tableNumber} 的餐點已送出，可繼續加點或等待餐點完成。`
+              : '請留意現場叫號螢幕或櫃台提醒，餐點完成後會通知取餐。'}
           </p>
 
           <div className="mt-8 grid gap-3 sm:grid-cols-2">
             <div className="soft-panel p-5 text-left">
               <div className="text-sm text-slate-500">訂單金額</div>
-              <div className="mono mt-2 text-3xl font-black text-brand-700">NT${orderResult.total}</div>
+              <div className="mono mt-2 text-3xl font-black text-brand-700">{formatCurrency(orderResult.total)}</div>
             </div>
             <div className="soft-panel p-5 text-left">
-              <div className="text-sm text-slate-500">返回倒數</div>
+              <div className="text-sm text-slate-500">回首頁倒數</div>
               <div className="mt-2 flex items-center gap-2 text-3xl font-black text-slate-900">
                 <Clock3 size={24} />
                 {countdown ?? 0}s
@@ -319,7 +360,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
 
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <button type="button" className="action-button px-8 py-3 text-lg" onClick={resetToStart}>
-              {isQrMode ? '回到加點頁' : '回首頁'}
+              {isQrMode ? '回到加點頁' : '回到首頁'}
             </button>
             {isQrMode && (
               <button
@@ -331,7 +372,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                   setStep('menu');
                 }}
               >
-                立即再加點
+                繼續加點
               </button>
             )}
           </div>
@@ -379,13 +420,13 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                 </p>
               </div>
               <h1 className="mt-3 text-2xl font-black text-slate-900">
-                {isQrMode ? '掃碼點餐 / 追加餐點' : '請選擇想吃的餐點'}
+                {isQrMode ? '掃碼點餐 / 可追加餐點' : '請選擇想要的餐點'}
               </h1>
             </div>
 
             {availability.paused && (
               <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
-                店家目前暫停接單，請稍後再試
+                店家目前暫停接單，請稍後再試。
               </div>
             )}
           </header>
@@ -408,10 +449,10 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-5">
-            {isLoading && <EmptyState title="菜單載入中" description="正在讀取最新可販售商品..." />}
-            {hasError && <EmptyState title="菜單載入失敗" description="請稍後重新整理，或通知櫃台協助處理。" />}
+            {isLoading && <EmptyState title="菜單載入中" description="正在為你準備最新可販售品項..." />}
+            {hasError && <EmptyState title="菜單載入失敗" description="請稍後重新整理，或洽詢現場人員協助。" />}
             {!isLoading && !hasError && filteredItems.length === 0 && (
-              <EmptyState title="目前沒有可點商品" description="請切換分類，或等待店家恢復供應。" />
+              <EmptyState title="這個分類暫時沒有商品" description="請切換其他分類，或稍後再查看。" />
             )}
 
             {!isLoading && !hasError && filteredItems.length > 0 && (
@@ -422,10 +463,11 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                     type="button"
                     disabled={!item.available}
                     onClick={() => {
-                      if (item.addOnGroups?.length > 0) {
+                      if (item.isCombo || item.addOnGroups?.length > 0 || item.comboGroups?.length > 0) {
                         setSelectedItem(item);
                         return;
                       }
+
                       addToCart(item);
                     }}
                     className={`soft-panel p-5 text-left transition ${
@@ -434,16 +476,19 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <span className="text-4xl">{item.emoji || '🍳'}</span>
-                      {!item.available && <span className="pill border-red-100 bg-red-50 text-red-600">售完</span>}
+                      <div className="flex gap-2">
+                        {item.isCombo && <span className="pill border-brand-100 bg-brand-50 text-brand-700">套餐</span>}
+                        {!item.available && <span className="pill border-red-100 bg-red-50 text-red-600">售完</span>}
+                      </div>
                     </div>
                     <h2 className="mt-4 text-xl font-bold text-slate-900">{item.name}</h2>
                     <p className="mt-2 min-h-12 text-sm leading-7 text-slate-500">
-                      {item.description || '現點現做，支援加料與備註。'}
+                      {item.description || '可自訂加料、搭配套餐並加入購物車。'}
                     </p>
                     <div className="mt-4 flex items-center justify-between">
-                      <div className="mono text-2xl font-black text-brand-600">NT${item.currentPrice}</div>
+                      <div className="mono text-2xl font-black text-brand-600">{formatCurrency(item.currentPrice)}</div>
                       {item.currentPrice !== item.basePrice && (
-                        <div className="mono text-sm text-slate-400 line-through">NT${item.basePrice}</div>
+                        <div className="mono text-sm text-slate-400 line-through">{formatCurrency(item.basePrice)}</div>
                       )}
                     </div>
                   </button>
@@ -457,14 +502,14 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-semibold text-slate-500">購物車</p>
-              <h2 className="text-2xl font-black text-slate-900">{cart.reduce((sum, item) => sum + item.quantity, 0)} 份餐點</h2>
+              <h2 className="text-2xl font-black text-slate-900">{cart.reduce((sum, item) => sum + item.quantity, 0)} 項餐點</h2>
             </div>
-            <span className="pill">{isQrMode ? '可合併既有訂單' : '完成後自動送單'}</span>
+            <span className="pill">{isQrMode ? '可追加點餐' : '送出後進入廚房製作'}</span>
           </div>
 
           <div className="mt-5 flex-1 space-y-3 overflow-y-auto">
             {cart.length === 0 ? (
-              <EmptyState title="購物車還是空的" description="點選左側商品後，餐點會出現在這裡。" />
+              <EmptyState title="購物車是空的" description="請從左側選擇餐點，也可以自訂加料與備註。" />
             ) : (
               cart.map((item) => (
                 <div key={item.id} className="soft-panel p-4">
@@ -474,10 +519,10 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
                         <span>{item.emoji || '🍳'}</span>
                         <h3 className="truncate font-bold text-slate-900">{item.name}</h3>
                       </div>
-                      <p className="mono mt-1 text-sm text-brand-700">NT${item.unitPrice}</p>
-                      {item.addons.length > 0 && (
+                      <p className="mono mt-1 text-sm text-brand-700">{formatCurrency(item.unitPrice)}</p>
+                      {item.modifiers.length > 0 && (
                         <p className="mt-2 text-xs leading-6 text-slate-500">
-                          {item.addons.map((addon) => addon.name).join('、')}
+                          {item.modifiers.map((modifier) => modifier.groupName ? `${modifier.groupName}：${modifier.name}` : modifier.name).join('、')}
                         </p>
                       )}
                       {item.note && <p className="mt-2 text-xs font-semibold text-amber-700">備註：{item.note}</p>}
@@ -517,20 +562,20 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
 
             {member && (
               <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm text-brand-700">
-                會員 {member.name}，目前點數 {member.points}
+                會員 {member.name}，目前點數 {member.points} 點，本筆完成後預計新增 {earnPoints} 點。
               </div>
             )}
 
             {member && (
               <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
                 <input type="checkbox" checked={usePoints} onChange={(event) => setUsePoints(event.target.checked)} />
-                使用點數折抵，本次最多可折抵 {Math.min(member.points, subtotal)} 點
+                使用點數折抵，可使用 {maxRedeemPoints} 點，折抵 {formatCurrency(maxRedeemPoints * redeemRate)}
               </label>
             )}
 
             <textarea
               className="field min-h-24 resize-none"
-              placeholder={isQrMode ? '可留下桌邊點餐備註，例如餐具需求或不要醬。' : '可留下整筆訂單備註，例如分袋、晚點取餐。'}
+              placeholder={isQrMode ? '可輸入本次加點備註，例如不要胡椒、餐點分開放。' : '可輸入整筆訂單備註，例如外帶附餐具、飲料先做。'}
               value={orderNote}
               onChange={(event) => setOrderNote(event.target.value)}
             />
@@ -538,15 +583,15 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
             <div className="soft-panel p-4">
               <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
                 <span>小計</span>
-                <span className="mono">NT${subtotal}</span>
+                <span className="mono">{formatCurrency(subtotal)}</span>
               </div>
               <div className="mb-2 flex items-center justify-between text-sm text-slate-500">
                 <span>點數折抵</span>
-                <span className="mono">-NT${redeemPoints}</span>
+                <span className="mono">-{formatCurrency(redeemPoints * redeemRate)}</span>
               </div>
               <div className="flex items-center justify-between text-lg font-black text-slate-900">
                 <span>合計</span>
-                <span className="mono">NT${total}</span>
+                <span className="mono">{formatCurrency(total)}</span>
               </div>
             </div>
 
@@ -556,7 +601,7 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
               disabled={availability.paused || orderMutation.isPending}
               onClick={placeOrder}
             >
-              {orderMutation.isPending ? '送單中...' : isQrMode ? '確認加點並送出' : '確認下單'}
+              {orderMutation.isPending ? '送單中...' : isQrMode ? '送出本次加點' : '確認點餐'}
             </button>
           </div>
         </aside>
@@ -566,8 +611,8 @@ export default function OrderingFlow({ mode, tableNumber = '' }) {
         <MenuCustomizerModal
           item={selectedItem}
           onClose={() => setSelectedItem(null)}
-          onConfirm={(addons, note) => {
-            addToCart(selectedItem, addons, note);
+          onConfirm={(addons, note, comboSelections) => {
+            addToCart(selectedItem, addons, note, comboSelections);
             setSelectedItem(null);
           }}
         />

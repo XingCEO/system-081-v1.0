@@ -42,20 +42,20 @@ export default function KdsPage() {
     onSuccess: (data) => {
       if (data.status === 'READY') {
         setLatestCall(data.orderNumber);
-        toast.success(`訂單 ${data.orderNumber} 已完成，已送出叫號`);
+        toast.success(`訂單 ${data.orderNumber} 已完成，請準備叫號`);
       } else {
-        toast.success(`訂單 ${data.orderNumber} 已更新為製作中`);
+        toast.success(`訂單 ${data.orderNumber} 已開始製作`);
       }
       queryClient.invalidateQueries({ queryKey: ['kds-orders'] });
     },
-    onError: (error) => toast.error(error.message || '更新狀態失敗')
+    onError: (error) => toast.error(error.message || '更新訂單狀態失敗')
   });
 
   useEffect(() => {
     const socket = connectSocket('kds');
     socket.on('order:new', () => {
       queryClient.invalidateQueries({ queryKey: ['kds-orders'] });
-      toast.success('收到新訂單');
+      toast.success('收到新的廚房訂單');
     });
     socket.on('order:status_changed', () => queryClient.invalidateQueries({ queryKey: ['kds-orders'] }));
     socket.on('kitchen:call', (payload) => setLatestCall(payload.orderNumber));
@@ -82,7 +82,7 @@ export default function KdsPage() {
             <h1 className="mt-2 text-3xl font-black text-slate-900">廚房製作看板</h1>
           </div>
           <div className="flex items-center gap-3">
-            {latestCall && <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700">最新叫號：#{latestCall}</div>}
+            {latestCall && <div className="rounded-2xl bg-brand-50 px-4 py-3 text-sm font-semibold text-brand-700">最新完成：#{latestCall}</div>}
             <Link className="ghost-button" to="/pos">返回 POS</Link>
           </div>
         </header>
@@ -90,8 +90,8 @@ export default function KdsPage() {
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <section className="panel overflow-hidden p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="section-title">待製作 / 製作中</h2>
-              <span className="pill">{sortedOrders.length} 張訂單</span>
+              <h2 className="section-title">待接單 / 製作中</h2>
+              <span className="pill">{sortedOrders.length} 張單</span>
             </div>
 
             {sortedOrders.length === 0 ? (
@@ -108,7 +108,7 @@ export default function KdsPage() {
                           <p className="mt-1 text-sm text-slate-500">{formatOrderType(order)}</p>
                         </div>
                         <div className="rounded-full bg-white/80 px-3 py-1 text-sm font-semibold text-slate-600">
-                          {waitMinutes} 分鐘
+                          等待 {waitMinutes} 分鐘
                         </div>
                       </div>
 
@@ -120,7 +120,9 @@ export default function KdsPage() {
                               <span className="mono text-base font-semibold text-brand-700">x{item.quantity}</span>
                             </div>
                             {Array.isArray(item.addons) && item.addons.length > 0 && (
-                              <p className="mt-2 text-xs leading-6 text-slate-500">{item.addons.map((addon) => addon.name).join('、')}</p>
+                              <p className="mt-2 text-xs leading-6 text-slate-500">
+                                {item.addons.map((addon) => addon.groupName ? `${addon.groupName}：${addon.name}` : addon.name).join('、')}
+                              </p>
                             )}
                             {item.note && <p className="mt-2 text-xs font-semibold text-amber-700">備註：{item.note}</p>}
                           </div>
@@ -155,9 +157,9 @@ export default function KdsPage() {
           <aside className="panel p-5">
             <h2 className="section-title">KDS 提示</h2>
             <div className="mt-4 space-y-3 text-sm leading-7 text-slate-500">
-              <div className="soft-panel p-4">新訂單會透過 Socket 即時進來，不需要手動刷新。</div>
-              <div className="soft-panel p-4">等待超過 10 分鐘會變橘色，超過 15 分鐘會變紅色，方便優先處理。</div>
-              <div className="soft-panel p-4">按下「完成並叫號」後，前台叫號畫面與 POS 都會同步收到通知。</div>
+              <div className="soft-panel p-4">新訂單會透過 Socket 即時推送，不需要手動重新整理。</div>
+              <div className="soft-panel p-4">等待超過 10 分鐘會轉橘色，超過 15 分鐘會轉紅色，方便廚房優先處理。</div>
+              <div className="soft-panel p-4">點選完成後會同步通知叫號螢幕與 POS 畫面。</div>
             </div>
           </aside>
         </div>

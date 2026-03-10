@@ -1,39 +1,26 @@
 # Zeabur 部署指南
 
-本專案要上 Zeabur 時，建議拆成四個服務：
+本專案建議在 Zeabur 拆成 4 個服務：
 
 1. PostgreSQL
 2. Backend
 3. Frontend
 4. Admin
 
-## 為什麼不能直接丟 `docker-compose.yml`
+## 1. PostgreSQL
 
-Zeabur 官方文件目前明確說明不支援直接從 Docker Compose YAML 部署，所以這份 `docker-compose.yml` 主要是給本機與測試環境使用；上 Zeabur 時請改用同一個 Git 倉庫分別建立多個服務。
+直接使用 Zeabur 內建 PostgreSQL 服務即可。  
+建立完成後，將資料庫連線字串填到 Backend 的 `DATABASE_URL`。
 
-## 建議部署順序
+## 2. Backend 服務
 
-1. 先建立 Zeabur Project
-2. 加入 PostgreSQL 服務
-3. 部署 Backend
-4. Backend 拿到公開網址後，再部署 Frontend 與 Admin
-5. 到 Backend 執行一次 seed 指令
-
-## 服務設定
-
-### 1. PostgreSQL
-
-在 Zeabur 新增 PostgreSQL 服務即可，不需要額外寫 Dockerfile。
-
-部署完成後，把 Zeabur 提供的連線字串填到 Backend 的 `DATABASE_URL`。
-
-### 2. Backend 服務
+Zeabur 設定：
 
 - Root Directory：`backend`
 - Watch Paths：`/backend`
-- Deploy Method：Dockerfile
+- Deploy Method：`Dockerfile`
 
-建議變數：
+建議環境變數：
 
 ```env
 DATABASE_URL=<Zeabur PostgreSQL 連線字串>
@@ -51,121 +38,102 @@ ADMIN_URL=https://<admin-domain>
 CORS_ORIGINS=https://<frontend-domain>,https://<admin-domain>
 ```
 
-說明：
+注意事項：
 
-- `PORT` 不需要手動設定，Zeabur 會自動注入。
-- `RUN_MIGRATIONS=true` 時，容器啟動會自動跑 `prisma migrate deploy`。
-- `PRISMA_DB_PUSH_FALLBACK` 在 Zeabur 請保持關閉或不要設定，避免 production 資料庫在 migration 失敗時退回 `db push`。
-- 前端與後台網址拿到之後，記得回填 `FRONTEND_URL`、`ADMIN_URL`、`CORS_ORIGINS`。
+- `RUN_MIGRATIONS=true` 會在容器啟動時執行 `prisma migrate deploy`
+- 不要在 Zeabur 使用 `PRISMA_DB_PUSH_FALLBACK`
+- `PORT` 由 Zeabur 注入，不需要手動填寫
 
-### 3. Frontend 服務
+## 3. Frontend 服務
+
+Zeabur 設定：
 
 - Root Directory：`frontend`
 - Watch Paths：`/frontend`
-- Deploy Method：Dockerfile
+- Deploy Method：`Dockerfile`
 
-建議變數：
+環境變數：
 
 ```env
 VITE_API_BASE_URL=https://<backend-domain>/api
 VITE_SOCKET_URL=https://<backend-domain>
 ```
 
-說明：
+## 4. Admin 服務
 
-- 這兩個都是 Vite build-time 變數，修改後需要重新部署才會生效。
-- 本專案的 `frontend/Dockerfile` 已經補了 `ARG` 與 `ENV`，可直接讓 Zeabur 在 multi-stage build 時注入。
-
-### 4. Admin 服務
+Zeabur 設定：
 
 - Root Directory：`admin`
 - Watch Paths：`/admin`
-- Deploy Method：Dockerfile
+- Deploy Method：`Dockerfile`
 
-建議變數：
+環境變數：
 
 ```env
 VITE_API_BASE_URL=https://<backend-domain>/api
 ```
 
-## 首次部署後要做的事
+## 首次上線流程
 
-### 1. 確認 migration
-
-如果 Backend 成功啟動，而且 `RUN_MIGRATIONS=true`，通常 migration 會自動完成。
-
-若你要手動執行，請到 Backend 服務頁面使用 Zeabur 的 Execute Command：
+1. 先建立 PostgreSQL
+2. 部署 Backend
+3. 到 Backend 的 Execute Command 執行：
 
 ```bash
 npx prisma migrate deploy
-```
-
-### 2. 匯入 Seed 資料
-
-同樣在 Backend 的 Execute Command 執行：
-
-```bash
 node prisma/seed.js
 ```
 
-### 3. 驗證健康檢查
+4. 部署 Frontend
+5. 部署 Admin
 
-打開：
+## 健康檢查
+
+Backend 成功後請確認：
 
 ```text
 https://<backend-domain>/api/health
 ```
 
-應回傳 `success: true`。
+應回傳：
 
-## 建議的 Zeabur 設定習慣
-
-### Root Directory
-
-這個 monorepo 一定要分別指定：
-
-- Backend：`backend`
-- Frontend：`frontend`
-- Admin：`admin`
-
-否則 Zeabur 會把整個專案當成同一個根目錄處理，建置與重部署會很混亂。
-
-### Watch Paths
-
-建議分開設定：
-
-- Backend：`/backend`
-- Frontend：`/frontend`
-- Admin：`/admin`
-
-這樣你只改前端時，不會把後端也一起重建。
+```json
+{"success":true,"data":{"status":"ok"}}
+```
 
 ## 常見問題
 
-### 前端畫面打得開，但 API 都 404
+### Frontend / Admin 打不到 API
 
-通常是 `VITE_API_BASE_URL` 沒設，或設成了舊網址。因為 Vite 在 build 時就把這個值寫進靜態檔案裡，所以改完變數後要重新部署 Frontend / Admin。
+請檢查：
 
-### Socket.IO 連不上
+- `VITE_API_BASE_URL` 是否為完整後端網址
+- Backend 的 `CORS_ORIGINS` 是否包含前台與後台網址
 
-請確認：
+### Socket.IO 沒連上
 
-1. `VITE_SOCKET_URL` 指向 Backend 公開網址
-2. Backend 的 `CORS_ORIGINS` 有包含 Frontend 網域
-3. Backend 已正常對外提供 `/socket.io`
+請檢查：
 
-### Backend 啟動後立刻失敗
+- `VITE_SOCKET_URL` 是否為後端網址
+- Backend 是否正常啟動 `Socket.IO`
 
-先檢查：
+### Backend 啟動但資料表不存在
 
-1. `DATABASE_URL` 是否正確
-2. PostgreSQL 服務是否已完成建立
-3. 是否有舊資料庫結構與 migration 紀錄不一致的情況
+請在 Backend Execute Command 再執行一次：
 
-## 官方文件
+```bash
+npx prisma migrate deploy
+```
 
-- Dockerfile 部署：[Deploying with Dockerfile](https://zeabur.com/docs/en-US/deploy/dockerfile)
-- Root Directory：[Custom Root Directory](https://zeabur.com/docs/en-US/deploy/root-directory)
-- Watch Paths：[觸發路徑](https://zeabur.com/docs/zh-TW/deploy/watch-paths)
-- Environment Variables：[Setting Environment Variables](https://zeabur.com/docs/es-ES/deploy/variables)
-- Execute Command：[執行命令](https://zeabur.com/docs/zh-TW/deploy/command-execution)
+### Seed 沒有資料
+
+請在 Backend Execute Command 執行：
+
+```bash
+node prisma/seed.js
+```
+
+## 補充
+
+- Zeabur 上傳圖片會存於容器檔案系統，若你要長期保存，建議後續改接 S3 / R2
+- 如果要正式商用，建議把備份檔同步到外部儲存

@@ -119,13 +119,16 @@ model Category {
 model MenuItem {
   id                Int                  @id @default(autoincrement())
   name              String
+  externalCode      String?              @unique
   categoryId        Int
   basePrice         Float
   cost              Float                @default(0)
   stock             Int                  @default(0)
   stockAlert        Int                  @default(5)
   isActive          Boolean              @default(true)
+  isCombo           Boolean              @default(false)
   timePricing       Json?
+  comboConfig       Json?
   emoji             String?
   description       String?
   imageUrl          String?

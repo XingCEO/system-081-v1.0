@@ -1,46 +1,67 @@
-// 檔案上傳路由
 const express = require('express');
+const fs = require('fs');
 const multer = require('multer');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const { authenticate } = require('../middleware/auth');
+
+const HttpError = require('../utils/HttpError');
+const { authenticate, authorize } = require('../middleware/auth');
 
 const router = express.Router();
+const uploadDirectory = path.join(__dirname, '../../uploads');
 
-// 設定 multer 儲存
+fs.mkdirSync(uploadDirectory, { recursive: true });
+
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../../uploads'));
+  destination: (_req, _file, callback) => {
+    callback(null, uploadDirectory);
   },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
+  filename: (_req, file, callback) => {
+    const extension = path.extname(file.originalname);
+    callback(null, `${uuidv4()}${extension}`);
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-  fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|webp/;
-    const ext = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mime = allowed.test(file.mimetype);
-    if (ext && mime) {
-      cb(null, true);
-    } else {
-      cb(new Error('只允許上傳圖片檔案（JPEG, PNG, GIF, WebP）'));
+  limits: {
+    fileSize: 5 * 1024 * 1024
+  },
+  fileFilter: (_req, file, callback) => {
+    const allowedExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+
+    if (!allowedExtensions.includes(extension) || !allowedMimeTypes.includes(file.mimetype)) {
+      callback(new HttpError(400, '僅支援 JPG、PNG、GIF、WEBP 圖片格式。'));
+      return;
     }
+
+    callback(null, true);
   }
 });
 
-// POST /api/upload - 上傳圖片
-router.post('/', authenticate, upload.single('image'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, message: '請選擇要上傳的檔案' });
-  }
+router.post(
+  '/',
+  authenticate,
+  authorize('OWNER', 'MANAGER'),
+  upload.single('image'),
+  (req, res) => {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: '請先選擇要上傳的圖片。'
+      });
+    }
 
-  const url = `/uploads/${req.file.filename}`;
-  res.json({ success: true, data: { url, filename: req.file.filename } });
-});
+    return res.json({
+      success: true,
+      data: {
+        filename: req.file.filename,
+        url: `/uploads/${req.file.filename}`
+      }
+    });
+  }
+);
 
 module.exports = router;

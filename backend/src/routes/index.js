@@ -11,6 +11,7 @@ const reservationRoutes = require('./reservations');
 const deliveryRoutes = require('./delivery');
 const settingsRoutes = require('./settings');
 const notificationsRoutes = require('./notifications');
+const uploadRoutes = require('./upload');
 
 const router = express.Router();
 
@@ -25,5 +26,6 @@ router.use('/reservations', reservationRoutes);
 router.use('/delivery', deliveryRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/notifications', notificationsRoutes);
+router.use('/upload', uploadRoutes);
 
 module.exports = router;
