@@ -1,14 +1,15 @@
 import { io } from 'socket.io-client';
+import { getApiBaseUrl, getSocketUrl } from './runtimeConfig';
 
 let sharedSocket;
 
 function resolveSocketUrl() {
-  const explicitUrl = (import.meta.env.VITE_SOCKET_URL || '').replace(/\/$/, '');
+  const explicitUrl = getSocketUrl();
   if (explicitUrl) {
     return explicitUrl;
   }
 
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+  const apiBaseUrl = getApiBaseUrl();
   if (/^https?:\/\//.test(apiBaseUrl)) {
     return apiBaseUrl.replace(/\/api$/, '');
   }

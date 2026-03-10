@@ -6,9 +6,10 @@ const { v4: uuidv4 } = require('uuid');
 
 const HttpError = require('../utils/HttpError');
 const { authenticate, authorize } = require('../middleware/auth');
+const { resolveUploadDirectory } = require('../utils/uploads');
 
 const router = express.Router();
-const uploadDirectory = path.join(__dirname, '../../uploads');
+const uploadDirectory = resolveUploadDirectory();
 
 fs.mkdirSync(uploadDirectory, { recursive: true });
 

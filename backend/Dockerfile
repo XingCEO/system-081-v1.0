@@ -3,6 +3,7 @@ FROM node:20-bookworm-slim
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV UPLOAD_DIR=/app/uploads
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl ca-certificates \
@@ -15,7 +16,8 @@ COPY docker-entrypoint.sh ./docker-entrypoint.sh
 COPY prisma ./prisma
 COPY src ./src
 
-RUN chmod +x ./docker-entrypoint.sh
+RUN mkdir -p /app/uploads \
+  && chmod +x ./docker-entrypoint.sh
 
 EXPOSE 3001
 

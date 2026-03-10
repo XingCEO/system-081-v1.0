@@ -17,5 +17,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 RUN npm install -g serve
 COPY --from=build /app/dist ./dist
+COPY docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
 EXPOSE 3000
-CMD ["sh", "-c", "serve -s dist -l ${PORT:-3000}"]
+CMD ["./docker-entrypoint.sh"]

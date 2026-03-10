@@ -1,7 +1,8 @@
 import axios from 'axios';
+import { getApiBaseUrl } from './runtimeConfig';
 
 function resolveApiBaseUrl() {
-  return (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '');
+  return getApiBaseUrl();
 }
 
 function getPersistedAuth() {

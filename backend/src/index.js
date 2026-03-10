@@ -15,10 +15,11 @@ const { initializeSocket } = require('./lib/socket');
 const apiRoutes = require('./routes');
 const { notFoundHandler, errorHandler } = require('./middleware/errorHandler');
 const { createCorsOriginHandler } = require('./utils/cors');
+const { resolveUploadDirectory } = require('./utils/uploads');
 
 const app = express();
 const server = http.createServer(app);
-const uploadsDirectory = path.resolve(__dirname, '../uploads');
+const uploadsDirectory = resolveUploadDirectory();
 
 fs.mkdirSync(uploadsDirectory, { recursive: true });
 

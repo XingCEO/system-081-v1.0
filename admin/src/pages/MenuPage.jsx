@@ -2,22 +2,10 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
+import { resolveAssetUrl } from '../lib/runtimeConfig';
 
 function resolveImageUrl(imageUrl) {
-  if (!imageUrl) {
-    return '';
-  }
-
-  if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-    return imageUrl;
-  }
-
-  const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  if (configuredBaseUrl && configuredBaseUrl.startsWith('http')) {
-    return `${new URL(configuredBaseUrl).origin}${imageUrl}`;
-  }
-
-  return imageUrl;
+  return resolveAssetUrl(imageUrl);
 }
 
 function defaultCategoryForm() {
