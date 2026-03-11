@@ -229,6 +229,61 @@ export default function MenuPage() {
     }
   };
 
+  const updateAddonOption = (index, patch) => {
+    setAddonForm((current) => ({
+      ...current,
+      options: current.options.map((entry, optionIndex) => (
+        optionIndex === index ? { ...entry, ...patch } : entry
+      ))
+    }));
+  };
+
+  const addAddonOption = () => {
+    setAddonForm((current) => ({
+      ...current,
+      options: [...current.options, { name: '', price: 0 }]
+    }));
+  };
+
+  const removeAddonOption = (index) => {
+    setAddonForm((current) => ({
+      ...current,
+      options: current.options.filter((_, optionIndex) => optionIndex !== index)
+    }));
+  };
+
+  const submitAddon = () => {
+    const normalizedName = addonForm.name.trim();
+    const normalizedOptions = addonForm.options
+      .map((option) => ({
+        name: option.name.trim(),
+        price: Number(option.price || 0)
+      }))
+      .filter((option) => option.name);
+
+    if (!normalizedName) {
+      toast.error('請輸入加料群組名稱');
+      return;
+    }
+
+    if (normalizedOptions.length === 0) {
+      toast.error('至少要有一個加料選項');
+      return;
+    }
+
+    if (addonForm.required && Number(addonForm.maxSelect || 0) < 1) {
+      toast.error('必選群組的最多可選數量至少要是 1');
+      return;
+    }
+
+    addonMutation.mutate({
+      ...addonForm,
+      name: normalizedName,
+      maxSelect: Math.max(1, Number(addonForm.maxSelect || 1)),
+      options: normalizedOptions
+    });
+  };
+
   return (
     <div className="space-y-4">
       <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -447,8 +502,8 @@ export default function MenuPage() {
         </article>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <article className="admin-panel overflow-hidden">
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(22rem,0.88fr)] 2xl:grid-cols-[minmax(0,1.18fr)_minmax(24rem,0.82fr)]">
+        <article className="admin-panel min-w-0 overflow-hidden">
           <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <div>
               <h2 className="text-xl font-bold text-slate-900">品項總覽</h2>
@@ -525,7 +580,7 @@ export default function MenuPage() {
           </div>
         </article>
 
-        <article className="admin-panel p-5">
+        <article className="admin-panel min-w-0 p-5">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-xl font-bold text-slate-900">加料群組 / 菜單匯入</h2>
             <button type="button" className="admin-ghost" onClick={() => setAddonForm(defaultAddonForm())}>
@@ -533,77 +588,112 @@ export default function MenuPage() {
             </button>
           </div>
 
-          <div className="mt-4 space-y-3">
-            <input
-              className="admin-field"
-              placeholder="群組名稱"
-              value={addonForm.name}
-              onChange={(event) => setAddonForm((current) => ({ ...current, name: event.target.value }))}
-            />
-            <input
-              className="admin-field"
-              type="number"
-              placeholder="最多可選數量"
-              value={addonForm.maxSelect}
-              onChange={(event) => setAddonForm((current) => ({ ...current, maxSelect: Number(event.target.value) }))}
-            />
-            <label className="rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
-              <input
-                checked={addonForm.required}
-                onChange={(event) => setAddonForm((current) => ({ ...current, required: event.target.checked }))}
-                type="checkbox"
-              /> 必選群組
-            </label>
+          <section className="admin-soft mt-4 p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">加料群組編輯器</h3>
+                <p className="mt-1 text-sm leading-7 text-slate-500">將群組欄位、選項設定與儲存操作拆開，避免平板與窄視窗發生欄位重疊。</p>
+              </div>
+              {addonForm.id && (
+                <div className="rounded-full bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700">
+                  編輯中 #{addonForm.id}
+                </div>
+              )}
+            </div>
 
-            {addonForm.options.map((option, index) => (
-              <div key={`${index}-${option.name}`} className="grid gap-3 md:grid-cols-[1fr_140px]">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-semibold text-slate-700">群組名稱</label>
                 <input
                   className="admin-field"
-                  placeholder="選項名稱"
-                  value={option.name}
-                  onChange={(event) => setAddonForm((current) => ({
-                    ...current,
-                    options: current.options.map((entry, optionIndex) => (
-                      optionIndex === index ? { ...entry, name: event.target.value } : entry
-                    ))
-                  }))}
+                  placeholder="例如：加蛋、甜度、溫度"
+                  value={addonForm.name}
+                  onChange={(event) => setAddonForm((current) => ({ ...current, name: event.target.value }))}
                 />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700">最多可選數量</label>
                 <input
                   className="admin-field"
                   type="number"
-                  placeholder="加價"
-                  value={option.price}
-                  onChange={(event) => setAddonForm((current) => ({
-                    ...current,
-                    options: current.options.map((entry, optionIndex) => (
-                      optionIndex === index ? { ...entry, price: Number(event.target.value || 0) } : entry
-                    ))
-                  }))}
+                  min="1"
+                  placeholder="1"
+                  value={addonForm.maxSelect}
+                  onChange={(event) => setAddonForm((current) => ({ ...current, maxSelect: Number(event.target.value) }))}
                 />
               </div>
-            ))}
+              <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+                <input
+                  checked={addonForm.required}
+                  onChange={(event) => setAddonForm((current) => ({ ...current, required: event.target.checked }))}
+                  type="checkbox"
+                />
+                必選群組
+              </label>
+            </div>
 
-            <button
-              type="button"
-              className="admin-ghost"
-              onClick={() => setAddonForm((current) => ({
-                ...current,
-                options: [...current.options, { name: '', price: 0 }]
-              }))}
-            >
-              新增選項
-            </button>
-            <button type="button" className="admin-button" onClick={() => addonMutation.mutate(addonForm)}>
-              儲存加料群組
-            </button>
-          </div>
+            <div className="mt-5 rounded-[24px] border border-slate-200 bg-white p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h4 className="font-semibold text-slate-900">選項設定</h4>
+                  <p className="mt-1 text-sm text-slate-500">支援逐項新增、刪除與調整加價。</p>
+                </div>
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">
+                  {addonForm.options.length} 個選項
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {addonForm.options.map((option, index) => (
+                  <div
+                    key={`${index}-${option.name}`}
+                    className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_120px_auto] sm:items-center"
+                  >
+                    <input
+                      className="admin-field min-w-0"
+                      placeholder={`選項名稱 ${index + 1}`}
+                      value={option.name}
+                      onChange={(event) => updateAddonOption(index, { name: event.target.value })}
+                    />
+                    <input
+                      className="admin-field min-w-0"
+                      type="number"
+                      placeholder="0"
+                      value={option.price}
+                      onChange={(event) => updateAddonOption(index, { price: Number(event.target.value || 0) })}
+                    />
+                    <button
+                      type="button"
+                      className="admin-ghost sm:min-h-[52px]"
+                      disabled={addonForm.options.length === 1}
+                      onClick={() => removeAddonOption(index)}
+                    >
+                      刪除
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <button type="button" className="admin-ghost" onClick={addAddonOption}>
+                  新增選項
+                </button>
+                <button type="button" className="admin-button" onClick={submitAddon}>
+                  儲存加料群組
+                </button>
+              </div>
+            </div>
+          </section>
 
           <div className="mt-6 space-y-3">
             {addons.map((group) => (
-              <div key={group.id} className="rounded-2xl bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
+              <div key={group.id} className="rounded-[24px] border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <div className="font-semibold text-slate-900">{group.name}</div>
+                    <div className="mt-1 text-sm text-slate-500">
+                      {group.required ? '必選' : '可選'} / 最多 {group.maxSelect} 項
+                    </div>
                     <div className="mt-1 text-sm text-slate-500">
                       {group.options.map((option) => `${option.name}${option.price ? ` (+${option.price})` : ''}`).join('、')}
                     </div>
@@ -616,43 +706,49 @@ export default function MenuPage() {
             ))}
           </div>
 
-          <div className="mt-8 border-t border-slate-100 pt-6">
+          <div className="admin-soft mt-8 p-5">
             <h3 className="text-lg font-bold text-slate-900">菜單匯入</h3>
             <p className="mt-2 text-sm leading-7 text-slate-500">
               可將先前匯出的 JSON 再次匯入，若勾選完全覆蓋，將以新資料為主並重建菜單與加料群組。
             </p>
             <textarea
-              className="admin-field mt-4 min-h-40 resize-none"
+              className="admin-field mt-4 min-h-44 resize-none"
               placeholder="貼上菜單 JSON"
               value={importPayload}
               onChange={(event) => setImportPayload(event.target.value)}
             />
-            <input
-              className="admin-field mt-3"
-              type="file"
-              accept=".json,application/json"
-              onChange={async (event) => {
-                const file = event.target.files?.[0];
-                if (!file) return;
-                setImportPayload(await file.text());
-              }}
-            />
-            <label className="mt-3 block rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
-              <input checked={replaceAll} onChange={(event) => setReplaceAll(event.target.checked)} type="checkbox" /> 完全覆蓋現有菜單
+            <div className="mt-3">
+              <label className="mb-2 block text-sm font-semibold text-slate-700">從檔案匯入 JSON</label>
+              <input
+                className="admin-field"
+                type="file"
+                accept=".json,application/json"
+                onChange={async (event) => {
+                  const file = event.target.files?.[0];
+                  if (!file) return;
+                  setImportPayload(await file.text());
+                }}
+              />
+            </div>
+            <label className="mt-3 flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-600">
+              <input checked={replaceAll} onChange={(event) => setReplaceAll(event.target.checked)} type="checkbox" />
+              完全覆蓋現有菜單
             </label>
-            <button
-              type="button"
-              className="admin-button mt-3"
-              onClick={() => {
-                try {
-                  importMutation.mutate({ replaceAll, data: JSON.parse(importPayload) });
-                } catch {
-                  toast.error('請提供合法的 JSON');
-                }
-              }}
-            >
-              開始匯入
-            </button>
+            <div className="mt-3 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="admin-button"
+                onClick={() => {
+                  try {
+                    importMutation.mutate({ replaceAll, data: JSON.parse(importPayload) });
+                  } catch {
+                    toast.error('請提供合法的 JSON');
+                  }
+                }}
+              >
+                開始匯入
+              </button>
+            </div>
           </div>
         </article>
       </section>
