@@ -17,4 +17,18 @@ fs.writeFileSync(
 );
 EOF
 
-exec sh -c "serve -s dist -l ${PORT:-3000}"
+PORT_VALUE="${PORT:-3000}"
+
+case "$PORT_VALUE" in
+  tcp://*)
+    LISTEN_TARGET="$PORT_VALUE"
+    ;;
+  *:*)
+    LISTEN_TARGET="tcp://$PORT_VALUE"
+    ;;
+  *)
+    LISTEN_TARGET="tcp://0.0.0.0:$PORT_VALUE"
+    ;;
+esac
+
+exec serve -s dist -l "$LISTEN_TARGET"
