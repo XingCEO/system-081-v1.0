@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../../lib/api';
 import { connectSocket } from '../../lib/socket';
+import AutoScaleStage from '../../components/shared/AutoScaleStage';
 
 function playChime() {
   try {
@@ -62,8 +63,14 @@ export default function CallerPage() {
   );
 
   return (
-    <div className="page-shell min-h-screen px-6 py-6" onPointerDown={() => { soundLockedRef.current = false; }}>
-      <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[1fr_420px]">
+    <AutoScaleStage
+      designWidth={1600}
+      designHeight={920}
+      minScale={0.72}
+      maxScale={1.08}
+      shellClassName="page-shell px-4 py-4 md:px-6"
+    >
+      <div className="mx-auto grid max-w-[1600px] gap-6 xl:grid-cols-[1fr_420px]" onPointerDown={() => { soundLockedRef.current = false; }}>
         <section className="panel p-8">
           <p className="pill text-base">叫號顯示螢幕</p>
           <h1 className="mt-5 text-5xl font-black text-slate-900 lg:text-6xl">最新叫號</h1>
@@ -104,6 +111,6 @@ export default function CallerPage() {
           </div>
         </aside>
       </div>
-    </div>
+    </AutoScaleStage>
   );
 }

@@ -3,6 +3,7 @@
 @tailwind utilities;
 
 :root {
+  --app-device-scale: 1;
   font-family: "Noto Sans TC", sans-serif;
   color: #0f172a;
   background:
@@ -11,19 +12,26 @@
     #f8fafc;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100dvh;
   background: inherit;
+  overflow-x: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 @layer components {
   .admin-shell {
     @apply min-h-screen bg-surface text-ink;
+    min-height: 100dvh;
   }
 
   .admin-panel {

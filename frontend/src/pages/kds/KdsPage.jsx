@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { connectSocket } from '../../lib/socket';
 import api from '../../lib/api';
+import AutoScaleStage from '../../components/shared/AutoScaleStage';
 
 function getCardTone(waitMinutes) {
   if (waitMinutes > 15) return 'border-red-300 bg-red-50';
@@ -74,7 +75,13 @@ export default function KdsPage() {
   );
 
   return (
-    <div className="page-shell min-h-screen px-4 py-4 md:px-6">
+    <AutoScaleStage
+      designWidth={1560}
+      designHeight={960}
+      minScale={0.74}
+      maxScale={1.08}
+      shellClassName="page-shell px-4 py-4 md:px-6"
+    >
       <div className="mx-auto flex max-w-[1600px] flex-col gap-4">
         <header className="panel flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
@@ -164,6 +171,6 @@ export default function KdsPage() {
           </aside>
         </div>
       </div>
-    </div>
+    </AutoScaleStage>
   );
 }

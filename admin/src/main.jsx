@@ -4,7 +4,10 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from 'react-hot-toast';
 import App from './App';
+import { installAdaptiveViewport } from './lib/adaptiveViewport';
 import './index.css';
+
+installAdaptiveViewport();
 
 const queryClient = new QueryClient({
   defaultOptions: {

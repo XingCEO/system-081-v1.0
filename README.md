@@ -135,3 +135,4 @@ npm run qa:full
 
 Launch readiness details:
 - [docs/LAUNCH_READINESS.md](C:\Users\White CEO\Downloads\081-system最終版\docs\LAUNCH_READINESS.md)
+- [docs/UI_UX_DESIGN_SYSTEM.md](C:\Users\White CEO\Downloads\081-system最終版\docs\UI_UX_DESIGN_SYSTEM.md)
