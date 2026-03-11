@@ -15,6 +15,10 @@
     "test:system": "node scripts/system-verification.mjs",
     "test:ui": "node scripts/ui-verification.mjs",
     "qa:full": "npm run test:smoke && npm run test:system && npm run test:ui",
+    "test:smoke:gateway": "cross-env SMOKE_BASE_URL=http://localhost:8080/api node scripts/smoke-test.mjs",
+    "test:system:gateway": "cross-env SYSTEM_TEST_BASE_URL=http://localhost:8080/api node scripts/system-verification.mjs",
+    "test:ui:gateway": "cross-env UI_TEST_FRONTEND_URL=http://localhost:8080 UI_TEST_ADMIN_URL=http://localhost:8080/admin node scripts/ui-verification.mjs",
+    "qa:gateway": "npm run test:smoke:gateway && npm run test:system:gateway && npm run test:ui:gateway",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
@@ -25,6 +29,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
     "playwright": "^1.58.2"
   }
 }

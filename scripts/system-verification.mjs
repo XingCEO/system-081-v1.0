@@ -95,9 +95,11 @@ function buildMemberPhone() {
 
 function pickTableNumber(existingTables) {
   const usedNumbers = new Set(existingTables.map((table) => String(table.number).padStart(2, '0')));
+  const seed = Number(String(Date.now()).slice(-4));
 
-  for (let tableNumber = 90; tableNumber <= 99; tableNumber += 1) {
-    const normalized = String(tableNumber).padStart(2, '0');
+  for (let offset = 0; offset < 9000; offset += 1) {
+    const tableNumber = 1000 + ((seed + offset) % 9000);
+    const normalized = String(tableNumber);
     if (!usedNumbers.has(normalized)) {
       return normalized;
     }

@@ -6,13 +6,15 @@ function resolveApiBaseUrl() {
   return getApiBaseUrl();
 }
 
-const api = axios.create({
-  baseURL: resolveApiBaseUrl()
-});
+const api = axios.create();
 
 let refreshPromise;
 
 api.interceptors.request.use((config) => {
+  if (!config.baseURL) {
+    config.baseURL = resolveApiBaseUrl();
+  }
+
   const { accessToken } = readAuthSession();
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;

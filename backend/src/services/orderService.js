@@ -20,6 +20,7 @@ const {
   notifyStockAlert
 } = require('./notificationService');
 const { printReceipt, printKitchenTicket } = require('./printerService');
+const { isRetryablePrismaError, withPrismaRetry } = require('../utils/prismaRetry');
 const socket = require('../lib/socket');
 
 const ORDER_INCLUDE = {
@@ -276,7 +277,9 @@ function reserveStock(stockReservations, menuItem, quantity) {
 }
 
 function buildStockSnapshots(stockReservations, menuItemMap) {
-  return [...stockReservations.entries()].map(([id, reserved]) => {
+  return [...stockReservations.entries()]
+    .sort(([leftId], [rightId]) => Number(leftId) - Number(rightId))
+    .map(([id, reserved]) => {
     const item = menuItemMap.get(id);
     return {
       id,
@@ -284,7 +287,7 @@ function buildStockSnapshots(stockReservations, menuItemMap) {
       stockAlert: item.stockAlert,
       newStock: item.stock - reserved
     };
-  });
+    });
 }
 
 function extractComboOptionIds(menuItems) {
@@ -662,7 +665,10 @@ async function createOrder(payload, actor) {
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
     try {
-      result = await executeOrderTransaction();
+      result = await withPrismaRetry(executeOrderTransaction, {
+        retries: 3,
+        baseDelayMs: 60
+      });
       break;
     } catch (error) {
       const isDuplicateOrderNumber =
@@ -671,7 +677,11 @@ async function createOrder(payload, actor) {
         && Array.isArray(error.meta?.target)
         && error.meta.target.includes('orderNumber');
 
-      if (!isDuplicateOrderNumber || attempt === 4) {
+      if (!isDuplicateOrderNumber && !isRetryablePrismaError(error)) {
+        throw error;
+      }
+
+      if (attempt === 4) {
         throw error;
       }
     }
@@ -743,7 +753,10 @@ async function restoreCancelledOrderStock(tx, order) {
       });
   });
 
-  for (const [menuItemId, quantity] of restored.entries()) {
+  const sortedRestoredEntries = [...restored.entries()]
+    .sort(([leftId], [rightId]) => Number(leftId) - Number(rightId));
+
+  for (const [menuItemId, quantity] of sortedRestoredEntries) {
     await tx.menuItem.update({
       where: { id: Number(menuItemId) },
       data: {
@@ -758,7 +771,7 @@ async function restoreCancelledOrderStock(tx, order) {
 async function updateOrderStatus(orderId, status) {
   validateSubmittedStatus(status);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withPrismaRetry(() => prisma.$transaction(async (tx) => {
     const currentOrder = await tx.order.findUnique({
       where: { id: Number(orderId) },
       include: ORDER_INCLUDE
@@ -887,6 +900,9 @@ async function updateOrderStatus(orderId, status) {
       where: { id: updated.id },
       include: ORDER_INCLUDE
     });
+  }), {
+    retries: 3,
+    baseDelayMs: 60
   });
 
   socket.emitOrderStatusChanged(result);

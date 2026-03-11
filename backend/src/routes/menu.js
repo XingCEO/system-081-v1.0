@@ -6,6 +6,7 @@ const HttpError = require('../utils/HttpError');
 const { authenticate, authorize, optionalAuth } = require('../middleware/auth');
 const { getCurrentPrice } = require('../utils/pricing');
 const { getSystemSettings } = require('../services/settingsService');
+const { withPrismaRetry } = require('../utils/prismaRetry');
 const {
   normalizeString,
   optionalString,
@@ -352,7 +353,7 @@ router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler
 
   assertImportPayload(items);
 
-  const result = await prisma.$transaction(async (tx) => {
+  const result = await withPrismaRetry(() => prisma.$transaction(async (tx) => {
     if (replaceAll) {
       await tx.menuItem.updateMany({
         data: { isActive: false },
@@ -448,6 +449,9 @@ router.post('/import', authenticate, authorize('OWNER', 'MANAGER'), asyncHandler
       importedAddOnGroups: addOnGroupMap.size,
       importedItems
     };
+  }), {
+    retries: 3,
+    baseDelayMs: 80
   });
 
   res.json({
