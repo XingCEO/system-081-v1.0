@@ -335,6 +335,9 @@ export default function PosPage() {
   const recentOrders = ordersQuery.data?.slice(0, 8) || [];
   const isMenuLoading = categoriesQuery.isLoading || availabilityQuery.isLoading;
   const hasMenuError = categoriesQuery.isError || availabilityQuery.isError;
+  const cartItemCount = cart.items.reduce((sum, item) => sum + item.quantity, 0);
+  const availableItemCount = availability.items.filter((item) => item.available).length;
+  const liveOrderCount = recentOrders.filter((order) => !['READY', 'CANCELLED'].includes(order.status)).length;
 
   useEffect(() => {
     const nextRule = {
@@ -447,18 +450,32 @@ export default function PosPage() {
   };
 
   return (
-    <div className="page-shell min-h-screen px-4 py-4 md:px-6" data-testid="pos-screen">
-      <div className="mx-auto flex max-w-[1680px] flex-col gap-4">
-        <header className="panel flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-          <div>
-            <p className="pill">收銀台 POS</p>
-            <h1 className="mt-3 text-3xl font-black text-slate-900">早餐店收銀與出單中心</h1>
-            <p className="mt-2 text-sm text-slate-500">
-              目前登入：{user?.name} / {user?.role}
-            </p>
+    <div className="page-shell min-h-screen px-3 py-3 md:px-5 xl:px-6" data-testid="pos-screen">
+      <div className="flex min-h-[calc(100dvh-1.5rem)] flex-col gap-4">
+        <header className="panel relative overflow-hidden px-5 py-5 md:px-6">
+          <div className="absolute inset-y-0 right-0 hidden w-80 bg-gradient-to-l from-brand-50 via-brand-50/70 to-transparent lg:block" />
+          <div className="relative flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-3xl">
+              <p className="pill">收銀台 POS</p>
+              <h1 className="mt-3 text-3xl font-black tracking-tight text-slate-900 md:text-4xl">早餐店收銀與出單中心</h1>
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-500">
+                目前登入：{user?.name} / {user?.role}。這個畫面已改成全幅工作台，適合平板橫向、桌機與大型觸控螢幕。
+              </p>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-3xl border border-white/80 bg-white/85 px-4 py-3 text-right shadow-soft backdrop-blur">
+                <div className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-600">Now Serving</div>
+                <div className="mt-1 mono text-2xl font-black text-slate-900">{cart.orderType === 'DINE_IN' ? 'DINE IN' : cart.orderType}</div>
+              </div>
+              <div className="rounded-3xl border border-white/80 bg-white/85 px-4 py-3 text-right shadow-soft backdrop-blur">
+                <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Today Queue</div>
+                <div className="mt-1 mono text-2xl font-black text-slate-900">{liveOrderCount}</div>
+              </div>
+            </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="relative mt-5 flex flex-wrap items-center gap-3">
             <button
               type="button"
               className="ghost-button"
@@ -483,8 +500,45 @@ export default function PosPage() {
           </div>
         </header>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
-          <section className="panel overflow-hidden">
+        {availability.paused && (
+          <section className="rounded-[28px] border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-800">
+            目前為暫停接單狀態，前台與自助點餐會同步顯示不可下單。
+          </section>
+        )}
+
+        <section className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+          {[
+            {
+              label: '可售商品',
+              value: `${availableItemCount} 項`,
+              hint: '依時段與庫存自動過濾'
+            },
+            {
+              label: '購物車品項',
+              value: `${cartItemCount} 項`,
+              hint: '右側即時同步數量與備註'
+            },
+            {
+              label: '進行中訂單',
+              value: `${liveOrderCount} 筆`,
+              hint: '含待製作與製作中'
+            },
+            {
+              label: '點數規則',
+              value: `NT$${availabilityPointsRule.earnEvery}`,
+              hint: `${availabilityPointsRule.earnPoints} 點 / 單位，折抵 NT$${availabilityPointsRule.redeemRate}`
+            }
+          ].map((card) => (
+            <article key={card.label} className="panel p-5">
+              <p className="text-sm font-semibold text-slate-500">{card.label}</p>
+              <h2 className="mt-3 text-3xl font-black text-slate-900">{card.value}</h2>
+              <p className="mt-2 text-sm text-slate-500">{card.hint}</p>
+            </article>
+          ))}
+        </section>
+
+        <div className="grid min-h-0 flex-1 gap-4 2xl:grid-cols-[minmax(0,1.55fr)_minmax(26rem,34rem)]">
+          <section className="panel min-w-0 overflow-hidden">
             <div className="border-b border-slate-100 px-5 py-4">
               <div className="flex gap-2 overflow-x-auto">
                 {categories.map((category) => (
@@ -504,21 +558,21 @@ export default function PosPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
               {isMenuLoading && (
-                <div className="soft-panel p-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-3">
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
                   正在載入可點餐菜單...
                 </div>
               )}
 
               {hasMenuError && (
-                <div className="soft-panel border border-red-100 bg-red-50 p-8 text-center text-sm text-red-600 md:col-span-2 xl:col-span-3">
+                <div className="soft-panel border border-red-100 bg-red-50 p-8 text-center text-sm text-red-600 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
                   菜單資料載入失敗，請重新整理或稍後再試。
                 </div>
               )}
 
               {!isMenuLoading && !hasMenuError && filteredItems.length === 0 && (
-                <div className="soft-panel p-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-3">
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
                   目前分類沒有可販售商品。
                 </div>
               )}
@@ -555,14 +609,14 @@ export default function PosPage() {
             </div>
           </section>
 
-          <aside className="flex flex-col gap-4">
-            <section className="panel p-5">
+          <aside className="grid min-h-0 gap-4 2xl:max-h-[calc(100dvh-23rem)] 2xl:grid-rows-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.8fr)]">
+            <section className="panel flex min-h-0 flex-col p-5 2xl:sticky 2xl:top-3 2xl:max-h-[calc(100dvh-8rem)]">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-500">購物車</p>
                   <h2 className="mt-1 flex items-center gap-2 text-2xl font-black text-slate-900">
                     <ShoppingCart size={22} />
-                    {cart.items.reduce((sum, item) => sum + item.quantity, 0)} 項
+                    {cartItemCount} 項
                   </h2>
                 </div>
                 <button type="button" className="ghost-button px-3 py-2" onClick={() => cart.clear()}>
@@ -570,7 +624,7 @@ export default function PosPage() {
                 </button>
               </div>
 
-              <div className="mt-5 space-y-3">
+              <div className="mt-5 flex-1 space-y-3 overflow-y-auto pr-1">
                 {cart.items.length === 0 && (
                   <div className="soft-panel p-5 text-sm text-slate-500">
                     目前還沒有餐點，請從左側菜單點選商品。
@@ -650,12 +704,12 @@ export default function PosPage() {
               </div>
             </section>
 
-            <section className="panel p-5">
+            <section className="panel flex min-h-0 flex-col p-5">
               <div className="mb-4 flex items-center gap-2">
                 <ClipboardList size={18} className="text-brand-600" />
                 <h2 className="section-title">今日訂單快覽</h2>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-y-auto pr-1">
                 {ordersQuery.isLoading && (
                   <div className="soft-panel p-4 text-sm text-slate-500">正在載入今日訂單...</div>
                 )}
@@ -692,12 +746,12 @@ export default function PosPage() {
               </div>
             </section>
 
-            <section className="panel p-5">
+            <section className="panel flex min-h-0 flex-col p-5">
               <div className="mb-4 flex items-center gap-2">
                 <BellRing size={18} className="text-brand-600" />
                 <h2 className="section-title">叫號記錄</h2>
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-y-auto pr-1">
                 {callHistory.map((entry, index) => (
                   <div key={`${entry.orderNumber}-${index}`} className="rounded-2xl bg-brand-50 p-4 text-sm text-brand-700">
                     {entry.orderNumber}

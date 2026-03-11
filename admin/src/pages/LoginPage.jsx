@@ -22,12 +22,12 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="admin-shell flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="admin-shell flex min-h-screen items-center justify-center px-3 py-6 md:px-5 xl:px-6">
+      <div className="grid w-full gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(24rem,0.75fr)]">
         <section className="admin-panel p-8 lg:p-10">
           <p className="text-sm font-semibold uppercase tracking-[0.35em] text-brand-600">Admin Console</p>
           <h1 className="mt-3 text-4xl font-black text-slate-900">早餐店營運管理後台</h1>
-          <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
+          <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">
             這裡可查看營業數據、管理菜單與訂單、調整通知設定與維護會員資料。
           </p>
 

@@ -38,8 +38,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="page-shell flex items-center justify-center px-4 py-10">
-      <div className="grid w-full max-w-6xl gap-8 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="page-shell flex min-h-screen items-center justify-center px-3 py-6 md:px-5 xl:px-6">
+      <div className="grid w-full gap-4 xl:grid-cols-[minmax(0,1.3fr)_minmax(24rem,0.7fr)]">
         <section className="panel overflow-hidden p-8 lg:p-10">
           <div className="mb-8 flex items-center gap-3">
             <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-brand-600 text-2xl text-white">
@@ -51,7 +51,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <p className="max-w-2xl text-lg leading-8 text-slate-600">
+          <p className="max-w-3xl text-lg leading-8 text-slate-600">
             支援員工 PIN 快速登入，也可使用帳號密碼進入 POS、KDS 與叫號系統。
           </p>
 

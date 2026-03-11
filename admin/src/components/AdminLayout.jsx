@@ -30,9 +30,9 @@ export default function AdminLayout() {
   const { user, logout } = useAdminAuthStore();
 
   return (
-    <div className="admin-shell px-4 py-4 md:px-6">
-      <div className="mx-auto grid min-h-[calc(100vh-2rem)] max-w-[1680px] gap-4 xl:grid-cols-[290px_1fr]">
-        <aside className="admin-panel flex flex-col p-5">
+    <div className="admin-shell px-3 py-3 md:px-5 xl:px-6">
+      <div className="grid min-h-[calc(100dvh-1.5rem)] gap-4 xl:grid-cols-[288px_minmax(0,1fr)]">
+        <aside className="admin-panel flex flex-col p-5 xl:sticky xl:top-3 xl:h-[calc(100dvh-1.5rem)]">
           <div className="mb-8">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-3xl bg-brand-600 text-2xl text-white">
               <Store size={26} />
@@ -44,7 +44,15 @@ export default function AdminLayout() {
             </p>
           </div>
 
-          <nav className="space-y-2">
+          <div className="mb-6 rounded-[28px] bg-brand-50 p-4">
+            <div className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-600">Control Tower</div>
+            <div className="mt-2 text-2xl font-black text-slate-900">{navigation.length} 個模組</div>
+            <p className="mt-2 text-sm leading-7 text-slate-600">
+              側邊欄已改成常駐式滿版後台，桌機與平板橫向都會維持清楚的工作區。
+            </p>
+          </div>
+
+          <nav className="space-y-2 overflow-y-auto pr-1">
             {navigation.map(({ to, label, icon: Icon, end }) => (
               <NavLink
                 key={to}
@@ -73,14 +81,27 @@ export default function AdminLayout() {
           </button>
         </aside>
 
-        <main className="space-y-4">
-          <header className="admin-panel flex flex-wrap items-center justify-between gap-4 px-5 py-4">
-            <div>
-              <p className="text-sm font-semibold text-brand-600">營運管理中心</p>
-              <h2 className="text-2xl font-black text-slate-900">早餐店 POS 後台總覽</h2>
-            </div>
-            <div className="rounded-full bg-brand-50 px-4 py-2 text-sm font-semibold text-brand-700">
-              可管理菜單、訂單、會員、報表、桌位與系統設定
+        <main className="min-w-0 space-y-4">
+          <header className="admin-panel relative overflow-hidden px-5 py-5 md:px-6">
+            <div className="absolute inset-y-0 right-0 hidden w-96 bg-gradient-to-l from-brand-50 via-brand-50/60 to-transparent lg:block" />
+            <div className="relative flex flex-wrap items-start justify-between gap-4">
+              <div className="max-w-3xl">
+                <p className="text-sm font-semibold text-brand-600">營運管理中心</p>
+                <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-900 md:text-4xl">早餐店 POS 後台總覽</h2>
+                <p className="mt-3 text-sm leading-7 text-slate-500">
+                  這個後台已調整成全寬工作檯，左側導覽固定、右側內容滿版延展，方便管理菜單、訂單、會員與系統設定。
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-3xl border border-white/80 bg-white/90 px-4 py-3 shadow-panel backdrop-blur">
+                  <div className="text-xs font-semibold uppercase tracking-[0.28em] text-brand-600">Role</div>
+                  <div className="mt-1 text-lg font-black text-slate-900">{user?.role || 'ADMIN'}</div>
+                </div>
+                <div className="rounded-3xl border border-white/80 bg-white/90 px-4 py-3 shadow-panel backdrop-blur">
+                  <div className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Scope</div>
+                  <div className="mt-1 text-lg font-black text-slate-900">Menu / Orders / Reports</div>
+                </div>
+              </div>
             </div>
           </header>
           <Outlet />
