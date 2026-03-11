@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 
 const config = {
-  apiBaseUrl: process.env.VITE_API_BASE_URL || '/api'
+  apiBaseUrl: process.env.VITE_API_BASE_URL || '/api',
+  appBasePath: process.env.APP_BASE_PATH || '/'
 };
 
 fs.writeFileSync(

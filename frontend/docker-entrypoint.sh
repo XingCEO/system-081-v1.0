@@ -7,7 +7,8 @@ const path = require('path');
 
 const config = {
   apiBaseUrl: process.env.VITE_API_BASE_URL || '/api',
-  socketUrl: process.env.VITE_SOCKET_URL || ''
+  socketUrl: process.env.VITE_SOCKET_URL || '',
+  appBasePath: process.env.APP_BASE_PATH || '/'
 };
 
 fs.writeFileSync(

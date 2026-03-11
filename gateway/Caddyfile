@@ -1,0 +1,29 @@
+{
+  auto_https off
+}
+
+:{$PORT:8080} {
+  encode zstd gzip
+
+  handle /api/* {
+    reverse_proxy {$BACKEND_UPSTREAM:backend:3001}
+  }
+
+  @socket path /socket.io*
+  handle @socket {
+    reverse_proxy {$BACKEND_UPSTREAM:backend:3001}
+  }
+
+  handle /uploads/* {
+    reverse_proxy {$BACKEND_UPSTREAM:backend:3001}
+  }
+
+  handle /admin* {
+    uri strip_prefix /admin
+    reverse_proxy {$ADMIN_UPSTREAM:admin:3002}
+  }
+
+  handle {
+    reverse_proxy {$FRONTEND_UPSTREAM:frontend:3000}
+  }
+}
