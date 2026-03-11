@@ -537,7 +537,7 @@ export default function PosPage() {
           ))}
         </section>
 
-        <div className="grid min-h-0 flex-1 gap-4 2xl:grid-cols-[minmax(0,1.55fr)_minmax(26rem,34rem)]">
+        <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1.45fr)_minmax(24rem,30rem)] 2xl:grid-cols-[minmax(0,1.55fr)_minmax(26rem,34rem)]">
           <section className="panel min-w-0 overflow-hidden">
             <div className="border-b border-slate-100 px-5 py-4">
               <div className="flex gap-2 overflow-x-auto">
@@ -558,21 +558,21 @@ export default function PosPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 2xl:grid-cols-3">
               {isMenuLoading && (
-                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 lg:col-span-3 xl:col-span-2 2xl:col-span-3">
                   正在載入可點餐菜單...
                 </div>
               )}
 
               {hasMenuError && (
-                <div className="soft-panel border border-red-100 bg-red-50 p-8 text-center text-sm text-red-600 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+                <div className="soft-panel border border-red-100 bg-red-50 p-8 text-center text-sm text-red-600 sm:col-span-2 lg:col-span-3 xl:col-span-2 2xl:col-span-3">
                   菜單資料載入失敗，請重新整理或稍後再試。
                 </div>
               )}
 
               {!isMenuLoading && !hasMenuError && filteredItems.length === 0 && (
-                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 xl:col-span-3 2xl:col-span-4">
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 sm:col-span-2 lg:col-span-3 xl:col-span-2 2xl:col-span-3">
                   目前分類沒有可販售商品。
                 </div>
               )}
@@ -609,8 +609,8 @@ export default function PosPage() {
             </div>
           </section>
 
-          <aside className="grid min-h-0 gap-4 2xl:max-h-[calc(100dvh-23rem)] 2xl:grid-rows-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.8fr)]">
-            <section className="panel flex min-h-0 flex-col p-5 2xl:sticky 2xl:top-3 2xl:max-h-[calc(100dvh-8rem)]">
+          <aside className="grid min-h-0 gap-4 xl:max-h-[calc(100dvh-23rem)] xl:grid-rows-[minmax(0,1.2fr)_minmax(0,0.9fr)_minmax(0,0.8fr)]">
+            <section className="panel flex min-h-0 flex-col p-5 xl:sticky xl:top-3 xl:max-h-[calc(100dvh-8rem)]">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-500">購物車</p>
