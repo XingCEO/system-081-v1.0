@@ -65,6 +65,7 @@ export default function LoginPage() {
             <label className="mb-2 block text-sm font-semibold text-slate-700">帳號</label>
             <input
               className="admin-field"
+              data-testid="admin-login-name-input"
               value={form.name}
               onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
             />
@@ -74,11 +75,12 @@ export default function LoginPage() {
             <input
               className="admin-field"
               type="password"
+              data-testid="admin-login-password-input"
               value={form.password}
               onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
             />
           </div>
-          <button className="admin-button w-full py-3 text-lg" disabled={loading} type="submit">
+          <button className="admin-button w-full py-3 text-lg" disabled={loading} type="submit" data-testid="admin-login-submit">
             {loading ? '登入中...' : '登入後台'}
           </button>
           <div className="rounded-2xl bg-slate-50 p-4 text-sm leading-7 text-slate-500">

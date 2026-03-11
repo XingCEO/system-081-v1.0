@@ -8,17 +8,26 @@ function getTodayRange(target = new Date()) {
 }
 
 async function generateOrderNumber(prisma, target = new Date()) {
-  const { start, end } = getTodayRange(target);
-  const sequence = await prisma.order.count({
+  const prefix = dayjs(target).format('YYYYMMDD');
+  const latestOrder = await prisma.order.findFirst({
     where: {
-      createdAt: {
-        gte: start,
-        lte: end
+      orderNumber: {
+        startsWith: `${prefix}-`
       }
+    },
+    orderBy: {
+      orderNumber: 'desc'
+    },
+    select: {
+      orderNumber: true
     }
   });
 
-  return `${dayjs(target).format('YYYYMMDD')}-${String(sequence + 1).padStart(4, '0')}`;
+  const latestSequence = latestOrder
+    ? Number(String(latestOrder.orderNumber).split('-')[1] || 0)
+    : 0;
+
+  return `${prefix}-${String(latestSequence + 1).padStart(4, '0')}`;
 }
 
 module.exports = {

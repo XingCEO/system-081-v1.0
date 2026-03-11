@@ -124,3 +124,14 @@ http://localhost:3001/api/health
 - 圖片上傳預設會寫入 `backend/uploads`，在 Zeabur 請把 Persistent Storage 掛到 `/app/uploads`
 - 若要正式長期保存圖片，仍建議後續接 S3 或 Cloudflare R2
 - `PRISMA_DB_PUSH_FALLBACK` 只保留給本機容器相容用途，Zeabur 不建議設定
+## QA Commands
+
+```bash
+npm run test:smoke
+npm run test:system
+npm run test:ui
+npm run qa:full
+```
+
+Launch readiness details:
+- [docs/LAUNCH_READINESS.md](C:\Users\White CEO\Downloads\081-system最終版\docs\LAUNCH_READINESS.md)

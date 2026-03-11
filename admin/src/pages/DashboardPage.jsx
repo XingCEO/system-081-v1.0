@@ -26,8 +26,36 @@ export default function DashboardPage() {
     lowStockItems: []
   };
 
+  if (dashboardQuery.isLoading) {
+    return (
+      <div className="space-y-4" data-testid="admin-dashboard-loading">
+        <section className="grid gap-4 md:grid-cols-3">
+          {[1, 2, 3].map((card) => (
+            <article key={card} className="admin-soft p-5">
+              <div className="h-4 w-28 rounded-full bg-slate-100" />
+              <div className="mt-4 h-10 w-24 rounded-2xl bg-slate-100" />
+              <div className="mt-3 h-4 w-40 rounded-full bg-slate-100" />
+            </article>
+          ))}
+        </section>
+        <article className="admin-panel p-5">
+          <div className="h-6 w-48 rounded-full bg-slate-100" />
+          <div className="mt-6 h-80 rounded-[24px] bg-slate-50" />
+        </article>
+      </div>
+    );
+  }
+
+  if (dashboardQuery.isError) {
+    return (
+      <article className="admin-panel border border-red-100 bg-red-50 p-6 text-red-600" data-testid="admin-dashboard-error">
+        後台儀表板資料載入失敗，請重新整理或檢查後端服務。
+      </article>
+    );
+  }
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" data-testid="admin-dashboard">
       <section className="grid gap-4 md:grid-cols-3">
         <MetricCard label="今日訂單數" value={dashboard.totalOrders} hint="今天累計建立的訂單筆數" />
         <MetricCard label="今日營業額" value={`NT$${dashboard.totalRevenue.toFixed(0)}`} hint="已排除取消訂單後的營收" />

@@ -12,6 +12,9 @@
     "dev": "concurrently -n backend,frontend,admin -c blue,green,magenta \"npm run dev -w backend\" \"npm run dev -w frontend\" \"npm run dev -w admin\"",
     "build": "npm run build -w backend && npm run build -w frontend && npm run build -w admin",
     "test:smoke": "node scripts/smoke-test.mjs",
+    "test:system": "node scripts/system-verification.mjs",
+    "test:ui": "node scripts/ui-verification.mjs",
+    "qa:full": "npm run test:smoke && npm run test:system && npm run test:ui",
     "docker:build": "docker compose build",
     "docker:up": "docker compose up --build",
     "docker:down": "docker compose down",
@@ -21,6 +24,7 @@
     "setup": "npm install && npm run build && npm run db:migrate && npm run db:seed"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "playwright": "^1.58.2"
   }
 }

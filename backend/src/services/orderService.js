@@ -1,4 +1,5 @@
 const dayjs = require('dayjs');
+const { Prisma } = require('@prisma/client');
 
 const prisma = require('../lib/prisma');
 const HttpError = require('../utils/HttpError');
@@ -518,7 +519,7 @@ async function createOrder(payload, actor) {
   const canApplyManualDiscount = Boolean(actor);
   const discount = canApplyManualDiscount ? requestedDiscount : 0;
 
-  const result = await prisma.$transaction(async (tx) => {
+  const executeOrderTransaction = () => prisma.$transaction(async (tx) => {
     const member = await resolveMember(tx, payload);
     const table = await resolveTable(tx, payload);
     const { subtotal, itemRecords, stockSnapshots } = await prepareOrderItems(tx, payload.items, {
@@ -656,6 +657,25 @@ async function createOrder(payload, actor) {
       stockSnapshots
     };
   });
+
+  let result;
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      result = await executeOrderTransaction();
+      break;
+    } catch (error) {
+      const isDuplicateOrderNumber =
+        error instanceof Prisma.PrismaClientKnownRequestError
+        && error.code === 'P2002'
+        && Array.isArray(error.meta?.target)
+        && error.meta.target.includes('orderNumber');
+
+      if (!isDuplicateOrderNumber || attempt === 4) {
+        throw error;
+      }
+    }
+  }
 
   socket.emitOrderNew(result.order);
   await notifyNewOrder(result.order);

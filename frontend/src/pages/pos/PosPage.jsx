@@ -21,6 +21,18 @@ import { useCartStore } from '../../stores/cartStore';
 import MenuCustomizerModal from '../../components/shared/MenuCustomizerModal';
 import Modal from '../../components/shared/Modal';
 
+const DEFAULT_POINTS_RULE = Object.freeze({
+  earnEvery: 30,
+  earnPoints: 1,
+  redeemRate: 1
+});
+
+const DEFAULT_AVAILABILITY = Object.freeze({
+  paused: false,
+  pointsRule: DEFAULT_POINTS_RULE,
+  items: []
+});
+
 function formatCurrency(value) {
   return `NT$${Number(value || 0).toFixed(0)}`;
 }
@@ -51,6 +63,7 @@ function CheckoutModal({ open, onClose, tables, onSubmit }) {
   const cart = useCartStore();
   const [memberLookup, setMemberLookup] = useState(cart.memberPhone || '');
   const [cashReceived, setCashReceived] = useState(cart.total());
+  const cartTotal = cart.total();
 
   const lookupMutation = useMutation({
     mutationFn: (phone) => api.get(`/members/lookup?phone=${phone}`),
@@ -68,11 +81,18 @@ function CheckoutModal({ open, onClose, tables, onSubmit }) {
 
   useEffect(() => {
     setMemberLookup(cart.memberPhone || '');
-  }, [cart.memberPhone]);
+  }, [cart.memberPhone, open]);
 
   useEffect(() => {
-    setCashReceived(cart.total());
-  }, [cart.items, cart.discount, cart.redeemPoints, cart.pointsRule, cart]);
+    if (!open) {
+      return;
+    }
+
+    setCashReceived((current) => {
+      const nextValue = cartTotal;
+      return Number(current) === Number(nextValue) ? current : nextValue;
+    });
+  }, [cart.discount, cart.items, cart.pointsRule, cart.redeemPoints, cartTotal, open]);
 
   if (!open) {
     return null;
@@ -255,6 +275,7 @@ export default function PosPage() {
   const queryClient = useQueryClient();
   const { user, logout } = useAuthStore();
   const cart = useCartStore();
+  const cartPointsRule = useCartStore((state) => state.pointsRule);
   const setCartPointsRule = useCartStore((state) => state.setPointsRule);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -308,17 +329,36 @@ export default function PosPage() {
   });
 
   const categories = categoriesQuery.data || [];
-  const availability = availabilityQuery.data || {
-    paused: false,
-    pointsRule: { earnEvery: 30, earnPoints: 1, redeemRate: 1 },
-    items: []
-  };
+  const availability = availabilityQuery.data || DEFAULT_AVAILABILITY;
+  const availabilityPointsRule = availability.pointsRule || DEFAULT_POINTS_RULE;
   const tables = tablesQuery.data || [];
   const recentOrders = ordersQuery.data?.slice(0, 8) || [];
+  const isMenuLoading = categoriesQuery.isLoading || availabilityQuery.isLoading;
+  const hasMenuError = categoriesQuery.isError || availabilityQuery.isError;
 
   useEffect(() => {
-    setCartPointsRule(availability.pointsRule);
-  }, [availability.pointsRule, setCartPointsRule]);
+    const nextRule = {
+      earnEvery: Number(availabilityPointsRule.earnEvery || DEFAULT_POINTS_RULE.earnEvery),
+      earnPoints: Number(availabilityPointsRule.earnPoints || DEFAULT_POINTS_RULE.earnPoints),
+      redeemRate: Number(availabilityPointsRule.redeemRate || DEFAULT_POINTS_RULE.redeemRate)
+    };
+
+    const currentRule = {
+      earnEvery: Number(cartPointsRule?.earnEvery || DEFAULT_POINTS_RULE.earnEvery),
+      earnPoints: Number(cartPointsRule?.earnPoints || DEFAULT_POINTS_RULE.earnPoints),
+      redeemRate: Number(cartPointsRule?.redeemRate || DEFAULT_POINTS_RULE.redeemRate)
+    };
+
+    if (
+      nextRule.earnEvery === currentRule.earnEvery &&
+      nextRule.earnPoints === currentRule.earnPoints &&
+      nextRule.redeemRate === currentRule.redeemRate
+    ) {
+      return;
+    }
+
+    setCartPointsRule(nextRule);
+  }, [availabilityPointsRule, cartPointsRule?.earnEvery, cartPointsRule?.earnPoints, cartPointsRule?.redeemRate, setCartPointsRule]);
 
   useEffect(() => {
     if (!selectedCategory && categories.length > 0) {
@@ -407,7 +447,7 @@ export default function PosPage() {
   };
 
   return (
-    <div className="page-shell min-h-screen px-4 py-4 md:px-6">
+    <div className="page-shell min-h-screen px-4 py-4 md:px-6" data-testid="pos-screen">
       <div className="mx-auto flex max-w-[1680px] flex-col gap-4">
         <header className="panel flex flex-wrap items-center justify-between gap-4 px-5 py-4">
           <div>
@@ -465,7 +505,25 @@ export default function PosPage() {
             </div>
 
             <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-3">
-              {filteredItems.map((item) => (
+              {isMenuLoading && (
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-3">
+                  正在載入可點餐菜單...
+                </div>
+              )}
+
+              {hasMenuError && (
+                <div className="soft-panel border border-red-100 bg-red-50 p-8 text-center text-sm text-red-600 md:col-span-2 xl:col-span-3">
+                  菜單資料載入失敗，請重新整理或稍後再試。
+                </div>
+              )}
+
+              {!isMenuLoading && !hasMenuError && filteredItems.length === 0 && (
+                <div className="soft-panel p-8 text-center text-sm text-slate-500 md:col-span-2 xl:col-span-3">
+                  目前分類沒有可販售商品。
+                </div>
+              )}
+
+              {!isMenuLoading && !hasMenuError && filteredItems.map((item) => (
                 <button
                   key={item.id}
                   type="button"
@@ -583,7 +641,8 @@ export default function PosPage() {
                 <button
                   type="button"
                   className="action-button mt-4 w-full py-3 text-lg"
-                  disabled={cart.items.length === 0 || createOrderMutation.isPending}
+                  data-testid="pos-checkout-button"
+                  disabled={cart.items.length === 0 || createOrderMutation.isPending || hasMenuError}
                   onClick={() => setShowCheckout(true)}
                 >
                   前往結帳
@@ -597,6 +656,16 @@ export default function PosPage() {
                 <h2 className="section-title">今日訂單快覽</h2>
               </div>
               <div className="space-y-3">
+                {ordersQuery.isLoading && (
+                  <div className="soft-panel p-4 text-sm text-slate-500">正在載入今日訂單...</div>
+                )}
+
+                {ordersQuery.isError && (
+                  <div className="soft-panel border border-red-100 bg-red-50 p-4 text-sm text-red-600">
+                    今日訂單快覽載入失敗。
+                  </div>
+                )}
+
                 {recentOrders.map((order) => (
                   <div key={order.id} className="rounded-2xl bg-slate-50 p-4">
                     <div className="flex items-center justify-between gap-3">

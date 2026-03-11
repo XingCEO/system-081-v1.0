@@ -1,5 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const dayjs = require('dayjs');
 const rateLimit = require('express-rate-limit');
@@ -39,7 +40,8 @@ function signAccessToken(user) {
     {
       sub: user.id,
       name: user.name,
-      role: user.role
+      role: user.role,
+      jti: crypto.randomUUID()
     },
     process.env.JWT_SECRET,
     {
@@ -51,7 +53,8 @@ function signAccessToken(user) {
 function signRefreshToken(user) {
   return jwt.sign(
     {
-      sub: user.id
+      sub: user.id,
+      jti: crypto.randomUUID()
     },
     process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET,
     {

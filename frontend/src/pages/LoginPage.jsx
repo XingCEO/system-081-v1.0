@@ -94,6 +94,7 @@ export default function LoginPage() {
                 key={tab.id}
                 type="button"
                 onClick={() => setMode(tab.id)}
+                data-testid={`front-login-tab-${tab.id}`}
                 className={`flex-1 rounded-full px-4 py-3 text-sm font-semibold transition ${
                   mode === tab.id ? 'bg-white text-brand-700 shadow-soft' : 'text-slate-500'
                 }`}
@@ -112,11 +113,12 @@ export default function LoginPage() {
                   maxLength={6}
                   inputMode="numeric"
                   placeholder="0000"
+                  data-testid="front-login-pin-input"
                   value={form.pin}
                   onChange={(event) => setForm((current) => ({ ...current, pin: event.target.value }))}
                 />
               </div>
-              <button className="action-button w-full py-3 text-lg" disabled={loading} type="submit">
+              <button className="action-button w-full py-3 text-lg" disabled={loading} type="submit" data-testid="front-login-pin-submit">
                 {loading ? '登入中...' : '使用 PIN 登入'}
               </button>
               <div className="rounded-3xl bg-slate-50 p-4 text-sm leading-7 text-slate-600">
@@ -130,6 +132,7 @@ export default function LoginPage() {
                 <input
                   className="field"
                   placeholder="例如：admin"
+                  data-testid="front-login-name-input"
                   value={form.name}
                   onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
                 />
@@ -140,11 +143,12 @@ export default function LoginPage() {
                   className="field"
                   type="password"
                   placeholder="請輸入密碼"
+                  data-testid="front-login-password-input"
                   value={form.password}
                   onChange={(event) => setForm((current) => ({ ...current, password: event.target.value }))}
                 />
               </div>
-              <button className="action-button w-full py-3 text-lg" disabled={loading} type="submit">
+              <button className="action-button w-full py-3 text-lg" disabled={loading} type="submit" data-testid="front-login-password-submit">
                 {loading ? '登入中...' : '登入系統'}
               </button>
             </form>

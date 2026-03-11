@@ -298,17 +298,20 @@ export default function MenuPage() {
             <input
               className="admin-field"
               placeholder="品項名稱"
+              data-testid="menu-item-name-input"
               value={itemForm.name}
               onChange={(event) => setItemForm((current) => ({ ...current, name: event.target.value }))}
             />
             <input
               className="admin-field"
               placeholder="外部商品編號 / SKU"
+              data-testid="menu-item-external-code-input"
               value={itemForm.externalCode}
               onChange={(event) => setItemForm((current) => ({ ...current, externalCode: event.target.value }))}
             />
             <select
               className="admin-field"
+              data-testid="menu-item-category-select"
               value={itemForm.categoryId}
               onChange={(event) => setItemForm((current) => ({ ...current, categoryId: event.target.value }))}
             >
@@ -321,6 +324,7 @@ export default function MenuPage() {
               className="admin-field"
               type="number"
               placeholder="售價"
+              data-testid="menu-item-base-price-input"
               value={itemForm.basePrice}
               onChange={(event) => setItemForm((current) => ({ ...current, basePrice: event.target.value }))}
             />
@@ -328,6 +332,7 @@ export default function MenuPage() {
               className="admin-field"
               type="number"
               placeholder="成本"
+              data-testid="menu-item-cost-input"
               value={itemForm.cost}
               onChange={(event) => setItemForm((current) => ({ ...current, cost: event.target.value }))}
             />
@@ -335,6 +340,7 @@ export default function MenuPage() {
               className="admin-field"
               type="number"
               placeholder="庫存"
+              data-testid="menu-item-stock-input"
               value={itemForm.stock}
               onChange={(event) => setItemForm((current) => ({ ...current, stock: event.target.value }))}
             />
@@ -435,7 +441,7 @@ export default function MenuPage() {
             </div>
           </div>
 
-          <button type="button" className="admin-button mt-4" onClick={submitItem}>
+          <button type="button" className="admin-button mt-4" onClick={submitItem} data-testid="menu-item-submit-button">
             儲存品項
           </button>
         </article>
